@@ -9,20 +9,10 @@ from mtproxy import handshake, config
 from mtproxy.handshake import ClientInfo
 from mtproxy.proxy import direct
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.utils.misc import setup_socket
+from mtproxy.utils import misc as umisc
 from mtproxy.utils.stat_tracker import tracker
 
 LOGGER = logging.getLogger('mtproxy')
-
-try:
-    import resource
-
-    soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
-except (ValueError, OSError):
-    print("Failed to increase the limit of opened files", flush=True, file=sys.stderr)
-except ImportError:
-    resource = None
 
 PORT = config.get('port')
 SECRETS = config.get('secrets')
@@ -72,7 +62,7 @@ async def pump(
 
 
 async def handle_client(client_read, client_write):
-    setup_socket(client_write.get_extra_info("socket"))
+    umisc.setup_socket(client_write.get_extra_info("socket"))
 
     result = await handshake.handle_handshake(client_read, client_write, secrets=SECRETS, fast=FAST_MODE)
     reader_tg, writer_tg = await direct.connect(result, fast=FAST_MODE)
@@ -132,6 +122,8 @@ def loop_exception_handler(loop, context):
 def main():
     import logging
     logging.basicConfig(level=logging.DEBUG)
+
+    umisc.setup_limits()
 
     if sys.platform == 'win32':
         loop = asyncio.ProactorEventLoop()

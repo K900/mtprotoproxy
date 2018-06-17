@@ -1,6 +1,9 @@
+import logging
 import socket
 
 from mtproxy import config
+
+LOGGER = logging.getLogger('mtproxy.utils.misc')
 
 HOUR = 24 * 60 * 60
 
@@ -39,3 +42,16 @@ def set_bufsizes(
 def setup_socket(sock: socket.socket):
     set_keepalive(sock)
     set_bufsizes(sock)
+
+
+def setup_limits():
+    try:
+        import resource
+
+        soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
+    except (ValueError, OSError):
+        LOGGER.exception("Failed to increase RLIMIT_NOFILE - this shouldn't be an issue "
+                         "unless you have thousands of connections")
+    except ImportError:
+        LOGGER.debug('Resource limits are not supported on this platform - ignoring')
