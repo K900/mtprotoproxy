@@ -13,14 +13,15 @@ import binascii
 import sys
 import re
 
-
 try:
     from Crypto.Cipher import AES
     from Crypto.Util import Counter
 
+
     def create_aes_ctr(key, iv):
         ctr = Counter.new(128, initial_value=iv)
         return AES.new(key, AES.MODE_CTR, counter=ctr)
+
 
     def create_aes_cbc(key, iv):
         return AES.new(key, AES.MODE_CBC, iv)
@@ -30,9 +31,11 @@ except ImportError:
           flush=True, file=sys.stderr)
     import pyaes
 
+
     def create_aes_ctr(key, iv):
         ctr = pyaes.Counter(iv)
         return pyaes.AESModeOfOperationCTR(key, ctr)
+
 
     def create_aes_cbc(key, iv):
         class EncryptorAdapter:
@@ -50,9 +53,9 @@ except ImportError:
         mode = pyaes.AESModeOfOperationCBC(key, iv)
         return EncryptorAdapter(mode)
 
-
 try:
     import resource
+
     soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
 except (ValueError, OSError):
@@ -60,8 +63,8 @@ except (ValueError, OSError):
 except ImportError:
     pass
 
-
 import config
+
 PORT = getattr(config, "PORT")
 USERS = getattr(config, "USERS")
 
@@ -70,10 +73,10 @@ PREFER_IPV6 = getattr(config, "PREFER_IPV6", socket.has_ipv6)
 # disables tg->client trafic reencryption, faster but less secure
 FAST_MODE = getattr(config, "FAST_MODE", True)
 STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
-PROXY_INFO_UPDATE_PERIOD = getattr(config, "PROXY_INFO_UPDATE_PERIOD", 60*60*24)
+PROXY_INFO_UPDATE_PERIOD = getattr(config, "PROXY_INFO_UPDATE_PERIOD", 60 * 60 * 24)
 READ_BUF_SIZE = getattr(config, "READ_BUF_SIZE", 16384)
 WRITE_BUF_SIZE = getattr(config, "WRITE_BUF_SIZE", 65536)
-CLIENT_KEEPALIVE = getattr(config, "CLIENT_KEEPALIVE", 60*30)
+CLIENT_KEEPALIVE = getattr(config, "CLIENT_KEEPALIVE", 60 * 30)
 AD_TAG = bytes.fromhex(getattr(config, "AD_TAG", ""))
 
 TG_DATACENTER_PORT = 443
@@ -105,7 +108,6 @@ TG_MIDDLE_PROXIES_V6 = {
     5: [("2001:b28:f23f:f005::d", 8888)], -5: [("2001:67c:04e8:f004::d", 8888)]
 }
 
-
 USE_MIDDLE_PROXY = (len(AD_TAG) == 16)
 
 PROXY_SECRET = bytes.fromhex(
@@ -126,15 +128,17 @@ DC_IDX_POS = 60
 PROTO_TAG_ABRIDGED = b'\xef\xef\xef\xef'
 PROTO_TAG_INTERMEDIATE = b'\xee\xee\xee\xee'
 
+
 class RpcFlags(enum.Flag):
-    NONE                  =        0x0
-    NOT_ENCRYPTED         =        0x2
-    HAS_AD_TAG            =        0x8
-    MAGIC                 =     0x1000
-    EXTMODE2              =    0x20000
+    NONE = 0x0
+    NOT_ENCRYPTED = 0x2
+    HAS_AD_TAG = 0x8
+    MAGIC = 0x1000
+    EXTMODE2 = 0x20000
     PROTOCOL_INTERMEDIATE = 0x20000000
-    PROTOCOL_ABRIDGED     = 0x40000000
-    QUICKACK              = 0x80000000
+    PROTOCOL_ABRIDGED = 0x40000000
+    QUICKACK = 0x80000000
+
 
 CBC_PADDING = 16
 PADDING_FILLER = b"\x04\x00\x00\x00"
@@ -143,7 +147,6 @@ MIN_MSG_LEN = 12
 MAX_MSG_LEN = 2 ** 24
 
 my_ip_info = {"ipv4": None, "ipv6": None}
-
 
 QUICK_ACK_EXPECTED = {}
 
@@ -247,7 +250,7 @@ class CryptoWrappedStreamWriter(LayeredStreamWriterBase):
     def write(self, data):
         if len(data) % self.block_size != 0:
             print_err("BUG: writing %d bytes not aligned to block size %d" % (
-                      len(data), self.block_size))
+                len(data), self.block_size))
             return 0
         q = self.encryptor.encrypt(data)
         return self.upstream.write(q)
@@ -322,7 +325,6 @@ class MTProtoCompactFrameStreamReader(LayeredStreamReaderBase):
             msg_len -= 0x80
         else:
             QUICK_ACK_EXPECTED[self.peer] = False
-
 
         if msg_len == 0x7f:
             msg_len_bytes = await self.upstream.readexactly(3)
@@ -463,24 +465,24 @@ async def handle_handshake(reader, writer):
     for user in USERS:
         secret = bytes.fromhex(USERS[user])
 
-        dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN]
+        dec_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN + PREKEY_LEN + IV_LEN]
         dec_prekey, dec_iv = dec_prekey_and_iv[:PREKEY_LEN], dec_prekey_and_iv[PREKEY_LEN:]
         dec_key = hashlib.sha256(dec_prekey + secret).digest()
         decryptor = create_aes_ctr(key=dec_key, iv=int.from_bytes(dec_iv, "big"))
 
-        enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN+PREKEY_LEN+IV_LEN][::-1]
+        enc_prekey_and_iv = handshake[SKIP_LEN:SKIP_LEN + PREKEY_LEN + IV_LEN][::-1]
         enc_prekey, enc_iv = enc_prekey_and_iv[:PREKEY_LEN], enc_prekey_and_iv[PREKEY_LEN:]
         enc_key = hashlib.sha256(enc_prekey + secret).digest()
         encryptor = create_aes_ctr(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
 
         decrypted = decryptor.decrypt(handshake)
 
-        proto_tag = decrypted[PROTO_TAG_POS:PROTO_TAG_POS+4]
+        proto_tag = decrypted[PROTO_TAG_POS:PROTO_TAG_POS + 4]
         if proto_tag not in (PROTO_TAG_ABRIDGED, PROTO_TAG_INTERMEDIATE):
             print_err('unsupported protocol tag: {}'.format(binascii.hexlify(proto_tag)))
             continue
 
-        dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS+2], "little", signed=True)
+        dc_idx = int.from_bytes(decrypted[DC_IDX_POS:DC_IDX_POS + 2], "little", signed=True)
 
         reader = CryptoWrappedStreamReader(reader, decryptor)
         writer = CryptoWrappedStreamWriter(writer, encryptor)
@@ -525,18 +527,18 @@ async def do_direct_handshake(proto_tag, dc_idx, dec_key_and_iv=None):
             continue
         break
 
-    rnd[PROTO_TAG_POS:PROTO_TAG_POS+4] = proto_tag
+    rnd[PROTO_TAG_POS:PROTO_TAG_POS + 4] = proto_tag
 
     if dec_key_and_iv:
-        rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN] = dec_key_and_iv[::-1]
+        rnd[SKIP_LEN:SKIP_LEN + KEY_LEN + IV_LEN] = dec_key_and_iv[::-1]
 
     rnd = bytes(rnd)
 
-    dec_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN][::-1]
+    dec_key_and_iv = rnd[SKIP_LEN:SKIP_LEN + KEY_LEN + IV_LEN][::-1]
     dec_key, dec_iv = dec_key_and_iv[:KEY_LEN], dec_key_and_iv[KEY_LEN:]
     decryptor = create_aes_ctr(key=dec_key, iv=int.from_bytes(dec_iv, "big"))
 
-    enc_key_and_iv = rnd[SKIP_LEN:SKIP_LEN+KEY_LEN+IV_LEN]
+    enc_key_and_iv = rnd[SKIP_LEN:SKIP_LEN + KEY_LEN + IV_LEN]
     enc_key, enc_iv = enc_key_and_iv[:KEY_LEN], enc_key_and_iv[KEY_LEN:]
     encryptor = create_aes_ctr(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
 
@@ -634,7 +636,7 @@ async def do_middleproxy_handshake(peer, rpc_flags, dc_idx):
     writer_tgt = MTProtoFrameStreamWriter(writer_tgt, START_SEQ_NO)
 
     key_selector = PROXY_SECRET[:4]
-    crypto_ts = int.to_bytes(int(time.time()) % (256**4), 4, "little")
+    crypto_ts = int.to_bytes(int(time.time()) % (256 ** 4), 4, "little")
 
     nonce = bytes([random.randrange(0, 256) for i in range(NONCE_LEN)])
 
@@ -730,7 +732,7 @@ async def handle_client(reader_clt, writer_clt):
     set_bufsizes(writer_clt.get_extra_info("socket"))
 
     peer = writer_clt.get_extra_info('peername')
-    
+
     clt_data = await handle_handshake(reader_clt, writer_clt)
     if not clt_data:
         writer_clt.transport.abort()
