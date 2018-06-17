@@ -4,7 +4,7 @@ import random
 
 from mtproxy import crypto
 from mtproxy.handshake import HandshakeResult
-from mtproxy.util import HANDSHAKE_LEN, PROTO_TAG_POS, HANDSHAKE_HEADER_LEN, KEY_LEN, IV_LEN
+from mtproxy.utils.util import HANDSHAKE_LEN, PROTO_TAG_POS, HANDSHAKE_HEADER_LEN, KEY_LEN, IV_LEN
 
 LOGGER = logging.getLogger('mtproxy.direct')
 
@@ -90,15 +90,9 @@ async def connect(handshake_result: HandshakeResult, fast: bool = False):
 
     handshake = bytes(handshake)
 
-    if not fast:
-        dec_key_and_iv = handshake[HANDSHAKE_HEADER_LEN:HANDSHAKE_HEADER_LEN + KEY_LEN + IV_LEN][::-1]
-        dec_key, dec_iv = dec_key_and_iv[:KEY_LEN], dec_key_and_iv[KEY_LEN:]
-        aes_dec = crypto.init_aes_ctr(key=dec_key, iv=int.from_bytes(dec_iv, "big"))
-        reader_tgt = crypto.AESReader(reader_tgt, aes=aes_dec)
-
-    enc_key_and_iv = handshake[HANDSHAKE_HEADER_LEN:HANDSHAKE_HEADER_LEN + KEY_LEN + IV_LEN]
-    enc_key, enc_iv = enc_key_and_iv[:KEY_LEN], enc_key_and_iv[KEY_LEN:]
-    aes_enc = crypto.init_aes_ctr(key=enc_key, iv=int.from_bytes(enc_iv, "big"))
+    enc_key_and_iv = crypto.key_iv_from_handshake(handshake)
+    enc_key, enc_iv = crypto.parse_key_iv(enc_key_and_iv)
+    aes_enc = crypto.init_aes_ctr(key=enc_key, iv=enc_iv)
 
     rnd_enc = handshake[:PROTO_TAG_POS] + aes_enc.encrypt(handshake)[PROTO_TAG_POS:]
 
@@ -106,5 +100,10 @@ async def connect(handshake_result: HandshakeResult, fast: bool = False):
     await writer_tgt.drain()
 
     writer_tgt = crypto.AESWriter(writer_tgt, aes=aes_enc)
+
+    if not fast:
+        dec_key, dec_iv = crypto.parse_key_iv(enc_key_and_iv[::-1])
+        aes_dec = crypto.init_aes_ctr(key=dec_key, iv=dec_iv)
+        reader_tgt = crypto.AESReader(reader_tgt, aes=aes_dec)
 
     return reader_tgt, writer_tgt

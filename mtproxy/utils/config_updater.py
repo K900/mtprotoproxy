@@ -5,7 +5,7 @@ from typing import *
 
 import aiohttp
 
-from mtproxy.util import HOUR
+from mtproxy.utils.util import HOUR
 
 LOGGER = logging.getLogger('mtproxy.proxy_config')
 

@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 
 import asyncio
-import collections
 import logging
 import socket
 import sys
-import time
 import urllib.parse
 import urllib.request
 
 from mtproxy import handshake
 from mtproxy.handshake import ClientInfo
 from mtproxy.proxy import direct
-from mtproxy.stat_tracker import tracker
+from mtproxy.utils.stat_tracker import tracker
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.util import setup_socket
+from mtproxy.utils.util import setup_socket
 
 LOGGER = logging.getLogger('mtproxy')
 

@@ -8,7 +8,7 @@ from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
 
-from mtproxy.util import KEY_LEN, HANDSHAKE_HEADER_LEN, IV_LEN
+from mtproxy.utils.util import KEY_LEN, HANDSHAKE_HEADER_LEN, IV_LEN
 
 LOGGER = logging.getLogger('mtproxy.crypto')
 
