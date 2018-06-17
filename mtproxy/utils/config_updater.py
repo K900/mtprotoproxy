@@ -5,7 +5,7 @@ from typing import *
 
 import aiohttp
 
-from mtproxy.utils.util import HOUR
+from mtproxy import config
 
 LOGGER = logging.getLogger('mtproxy.proxy_config')
 
@@ -50,7 +50,7 @@ TProxyConfig = Dict[int, Set[Tuple[str, int]]]
 
 
 class ProxyConfigUpdater:
-    def __init__(self, http_session: aiohttp.ClientSession, update_timeout: int=1 * HOUR):
+    def __init__(self, http_session: aiohttp.ClientSession, update_timeout: int = config.get('config_update_timeout')):
         self.proxy_list_v4 = DEFAULT_PROXIES_V4
         self.proxy_list_v6 = DEFAULT_PROXIES_V6
         self.proxy_secret = DEFAULT_PROXY_SECRET
@@ -126,8 +126,10 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     loop = asyncio.get_event_loop()
 
+
     async def wrapper():
         async with aiohttp.ClientSession() as session:
             await ProxyConfigUpdater(session).update_loop()
+
 
     loop.run_until_complete(wrapper())

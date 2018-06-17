@@ -2,7 +2,7 @@ import binascii
 import socket
 
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.utils.util import RpcFlags
+from mtproxy.utils.misc import RpcFlags
 
 CBC_PADDING = 16
 PADDING_FILLER = b"\x04\x00\x00\x00"

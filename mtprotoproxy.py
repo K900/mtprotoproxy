@@ -4,15 +4,13 @@ import asyncio
 import logging
 import socket
 import sys
-import urllib.parse
-import urllib.request
 
-from mtproxy import handshake
+from mtproxy import handshake, config
 from mtproxy.handshake import ClientInfo
 from mtproxy.proxy import direct
-from mtproxy.utils.stat_tracker import tracker
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.utils.util import setup_socket
+from mtproxy.utils.misc import setup_socket
+from mtproxy.utils.stat_tracker import tracker
 
 LOGGER = logging.getLogger('mtproxy')
 
@@ -24,30 +22,29 @@ try:
 except (ValueError, OSError):
     print("Failed to increase the limit of opened files", flush=True, file=sys.stderr)
 except ImportError:
-    pass
+    resource = None
 
-import config
+PORT = config.get('port')
+SECRETS = config.get('secrets')
 
-PORT = getattr(config, "PORT")
-USERS = getattr(config, "USERS")
-
-# load advanced settings
-PREFER_IPV6 = getattr(config, "PREFER_IPV6", socket.has_ipv6)
-# disables tg->client trafic reencryption, faster but less secure
-FAST_MODE = getattr(config, "FAST_MODE", True)
-STATS_PRINT_PERIOD = getattr(config, "STATS_PRINT_PERIOD", 600)
-PROXY_INFO_UPDATE_PERIOD = getattr(config, "PROXY_INFO_UPDATE_PERIOD", 60 * 60 * 24)
+FAST_MODE = config.get('fast_mode')
 READ_BUF_SIZE = config.get('buffer_read')
-WRITE_BUF_SIZE = config.get('buffer_write')
-AD_TAG = bytes.fromhex(config.get('ad_tag'))
 
-USE_MIDDLE_PROXY = (len(AD_TAG) == 16)
+AD_TAG = config.get('ad_tag')
+if AD_TAG:
+    AD_TAG = bytes.fromhex(AD_TAG)
+
+USE_MIDDLE_PROXY = config.get('middle_proxy')
+
+if AD_TAG and not USE_MIDDLE_PROXY:
+    LOGGER.warning('ad_tag is set, but use middle_proxy is disabled - enabling automatically')
+    USE_MIDDLE_PROXY = True
+
+if USE_MIDDLE_PROXY and FAST_MODE:
+    LOGGER.warning('middle proxy is incompatible with fast mode - disabling fast mode')
+    FAST_MODE = False
 
 my_ip_info = {"ipv4": None, "ipv6": None}
-
-
-def print_err(*params):
-    print(*params, file=sys.stderr, flush=True)
 
 
 async def pump(
@@ -77,7 +74,7 @@ async def pump(
 async def handle_client(client_read, client_write):
     setup_socket(client_write.get_extra_info("socket"))
 
-    result = await handshake.handle_handshake(client_read, client_write, secrets=USERS, fast=FAST_MODE)
+    result = await handshake.handle_handshake(client_read, client_write, secrets=SECRETS, fast=FAST_MODE)
     reader_tg, writer_tg = await direct.connect(result, fast=FAST_MODE)
 
     tracker.track_connected(result.client_info)
@@ -113,45 +110,13 @@ async def handle_client_wrapper(reader, writer):
         writer.transport.abort()
 
 
-def init_ip_info():
-    global USE_MIDDLE_PROXY
-    global PREFER_IPV6
-    global my_ip_info
-    TIMEOUT = 5
-
-    try:
-        with urllib.request.urlopen('https://v4.ifconfig.co/ip', timeout=TIMEOUT) as f:
-            if f.status != 200:
-                raise Exception("Invalid status code")
-            my_ip_info["ipv4"] = f.read().decode().strip()
-    except Exception:
-        pass
-
-    if PREFER_IPV6:
-        try:
-            with urllib.request.urlopen('https://v6.ifconfig.co/ip', timeout=TIMEOUT) as f:
-                if f.status != 200:
-                    raise Exception("Invalid status code")
-                my_ip_info["ipv6"] = f.read().decode().strip()
-        except Exception:
-            PREFER_IPV6 = False
-        else:
-            print_err("IPv6 found, using it for external communication")
-
-    if USE_MIDDLE_PROXY:
-        if ((not PREFER_IPV6 and not my_ip_info["ipv4"]) or
-                (PREFER_IPV6 and not my_ip_info["ipv6"])):
-            print_err("Failed to determine your ip, advertising disabled")
-            USE_MIDDLE_PROXY = False
-
-
 def loop_exception_handler(loop, context):
     exception = context.get("exception")
     transport = context.get("transport")
     if exception:
         if isinstance(exception, TimeoutError):
             if transport:
-                print_err("Timeout, killing transport")
+                logging.exception("Timeout, killing transport")
                 transport.abort()
                 return
         if isinstance(exception, OSError):
@@ -207,5 +172,4 @@ def main():
 
 
 if __name__ == "__main__":
-    init_ip_info()
     main()

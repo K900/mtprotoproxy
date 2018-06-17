@@ -1,6 +1,6 @@
 import socket
 
-import config
+from mtproxy import config
 
 HOUR = 24 * 60 * 60
 

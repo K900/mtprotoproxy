@@ -9,7 +9,7 @@ from mtproxy import crypto
 from mtproxy.mtproto import transports
 from mtproxy.mtproto.transports import AbstractTransport, Optional
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.utils.util import HANDSHAKE_LEN, PROTO_TAG_POS, DC_ID_POS
+from mtproxy.utils.misc import HANDSHAKE_LEN, PROTO_TAG_POS, DC_ID_POS
 
 
 LOGGER = logging.getLogger('mtproxy.handshake')
