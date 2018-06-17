@@ -1,6 +1,6 @@
 import asyncio
 
-from mtproxy.contexts import ClientInfo
+from mtproxy.handshake import ClientInfo
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 

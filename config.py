@@ -23,7 +23,7 @@ else:
 
 __defaults = {
     'ad_tag': '',
-
+    'stat_log_timeout': 60,
     'buffer_read': 16384,
     'buffer_write': 65536,
     'client_keepalive': 40

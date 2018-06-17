@@ -1,6 +1,19 @@
+import binascii
+import socket
+
+from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
+from mtproxy.util import RpcFlags
+
+CBC_PADDING = 16
+PADDING_FILLER = b"\x04\x00\x00\x00"
+
+MIN_MSG_LEN = 12
+MAX_MSG_LEN = 2 ** 24
+
+
 class MTProtoFrameStreamReader(LayeredStreamReaderBase):
     def __init__(self, upstream, seq_no=0):
-        self.upstream = upstream
+        super().__init__(upstream)
         self.seq_no = seq_no
 
     async def read(self, buf_size):
@@ -36,7 +49,7 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
 
 class MTProtoFrameStreamWriter(LayeredStreamWriterBase):
     def __init__(self, upstream, seq_no=0):
-        self.upstream = upstream
+        super().__init__(upstream)
         self.seq_no = seq_no
 
     def write(self, msg):
@@ -149,6 +162,7 @@ def get_middleproxy_aes_key_and_iv(nonce_srv, nonce_clt, clt_ts, srv_ip, clt_por
     key = md5_sum[:12] + sha1_sum
     iv = hashlib.md5(s[2:]).digest()
     return key, iv
+
 
 async def do_middleproxy_handshake(peer, rpc_flags, dc_idx):
     START_SEQ_NO = -2
@@ -281,4 +295,3 @@ async def do_middleproxy_handshake(peer, rpc_flags, dc_idx):
     reader_tgt = ProxyReqStreamReader(reader_tgt)
 
     return reader_tgt, writer_tgt
-

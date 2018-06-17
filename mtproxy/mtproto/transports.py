@@ -2,7 +2,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import *
 
-from mtproxy.util import RpcFlags
+from mtproxy.mtproto.rpc import RpcFlags
 
 
 class AbstractTransport(ABC):

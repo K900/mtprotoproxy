@@ -1,0 +1,12 @@
+import enum
+
+
+class RpcFlags(enum.Flag):
+    NONE = 0x0
+    NOT_ENCRYPTED = 0x2
+    HAS_AD_TAG = 0x8
+    MAGIC = 0x1000
+    EXTMODE2 = 0x20000
+    PROTOCOL_INTERMEDIATE = 0x20000000
+    PROTOCOL_ABRIDGED = 0x40000000
+    QUICKACK = 0x80000000

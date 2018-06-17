@@ -12,6 +12,7 @@ import urllib.request
 from mtproxy import handshake
 from mtproxy.handshake import ClientInfo
 from mtproxy.proxy import direct
+from mtproxy.stat_tracker import tracker
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 from mtproxy.util import setup_socket
 
@@ -44,15 +45,6 @@ AD_TAG = bytes.fromhex(config.get('ad_tag'))
 
 USE_MIDDLE_PROXY = (len(AD_TAG) == 16)
 
-PROTO_TAG_ABRIDGED = b'\xef\xef\xef\xef'
-PROTO_TAG_INTERMEDIATE = b'\xee\xee\xee\xee'
-
-CBC_PADDING = 16
-PADDING_FILLER = b"\x04\x00\x00\x00"
-
-MIN_MSG_LEN = 12
-MAX_MSG_LEN = 2 ** 24
-
 my_ip_info = {"ipv4": None, "ipv6": None}
 
 
@@ -60,45 +52,28 @@ def print_err(*params):
     print(*params, file=sys.stderr, flush=True)
 
 
-def init_stats():
-    global stats
-    stats = {user: collections.Counter() for user in USERS}
-
-
-def update_stats(user, connects=0, curr_connects_x2=0, octets=0):
-    global stats
-
-    if user not in stats:
-        stats[user] = collections.Counter()
-
-    stats[user].update(connects=connects, curr_connects_x2=curr_connects_x2,
-                       octets=octets)
-
-
 async def pump(
         reader: LayeredStreamReaderBase,
         writer: LayeredStreamWriterBase,
         client_info: ClientInfo
 ):
-    update_stats(client_info.proxy_username, curr_connects_x2=1)
-    try:
-        while True:
-            data = await reader.read(READ_BUF_SIZE)
-            if not data:
-                writer.write_eof()
-                await writer.drain()
-                writer.close()
-                return
-            else:
-                update_stats(client_info.proxy_username, octets=len(data))
-                writer.write(data)
-                await writer.drain()
-    except (OSError, AttributeError, asyncio.streams.IncompleteReadError) as e:
-        print_err(e)
-        pass
-    finally:
-        writer.transport.abort()
-        update_stats(client_info.proxy_username, curr_connects_x2=-1)
+    tracker.track_pump_start(client_info)
+
+    while True:
+        data = await reader.read(READ_BUF_SIZE)
+        if not data:
+            writer.write_eof()
+            await writer.drain()
+            writer.close()
+            break
+        else:
+            tracker.track_data_transferred(client_info, len(data))
+            writer.write(data)
+            await writer.drain()
+
+    writer.transport.abort()
+
+    tracker.track_pump_end(client_info)
 
 
 async def handle_client(client_read, client_write):
@@ -107,7 +82,7 @@ async def handle_client(client_read, client_write):
     result = await handshake.handle_handshake(client_read, client_write, secrets=USERS, fast=FAST_MODE)
     reader_tg, writer_tg = await direct.connect(result, fast=FAST_MODE)
 
-    update_stats(result.client_info.proxy_username, connects=1)
+    tracker.track_connected(result.client_info)
 
     # if not USE_MIDDLE_PROXY:
     # else:
@@ -138,19 +113,6 @@ async def handle_client_wrapper(reader, writer):
         peer = writer.get_extra_info('peername')
         LOGGER.exception(f'Client {peer} failed to connect!')
         writer.transport.abort()
-
-
-async def stats_printer():
-    global stats
-    while True:
-        await asyncio.sleep(STATS_PRINT_PERIOD)
-
-        print("Stats for", time.strftime("%d.%m.%Y %H:%M:%S"))
-        for user, stat in stats.items():
-            print("%s: %d connects (%d current), %.2f MB" % (
-                user, stat["connects"], stat["curr_connects_x2"] // 2,
-                stat["octets"] / 1000000))
-        print(flush=True)
 
 
 def init_ip_info():
@@ -185,20 +147,6 @@ def init_ip_info():
             USE_MIDDLE_PROXY = False
 
 
-def print_tg_info():
-    global my_ip_info
-
-    ip_addrs = [ip for ip in my_ip_info.values() if ip]
-    if not ip_addrs:
-        ip_addrs = ["YOUR_IP"]
-
-    for user, secret in sorted(USERS.items(), key=lambda x: x[0]):
-        for ip in ip_addrs:
-            params = {"server": ip, "port": PORT, "secret": secret}
-            params_encodeded = urllib.parse.urlencode(params, safe=':')
-            print("{}: tg://proxy?{}".format(user, params_encodeded), flush=True)
-
-
 def loop_exception_handler(loop, context):
     exception = context.get("exception")
     transport = context.get("transport")
@@ -222,8 +170,6 @@ def main():
     import logging
     logging.basicConfig(level=logging.DEBUG)
 
-    init_stats()
-
     if sys.platform == 'win32':
         loop = asyncio.ProactorEventLoop()
         asyncio.set_event_loop(loop)
@@ -231,7 +177,7 @@ def main():
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(loop_exception_handler)
 
-    stats_printer_task = asyncio.Task(stats_printer())
+    stats_printer_task = asyncio.Task(tracker.log_loop())
     asyncio.ensure_future(stats_printer_task)
 
     # if USE_MIDDLE_PROXY:
@@ -252,8 +198,6 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    stats_printer_task.cancel()
-
     server_v4.close()
     loop.run_until_complete(server_v4.wait_closed())
 
@@ -266,5 +210,4 @@ def main():
 
 if __name__ == "__main__":
     init_ip_info()
-    print_tg_info()
     main()
