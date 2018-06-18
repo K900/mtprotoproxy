@@ -200,11 +200,7 @@ async def do_middleproxy_handshake(proxy: 'MTProxy', client_handshake_result: Ha
     # pass as consts to simplify code
     RPC_FLAGS = b"\x00\x00\x00\x00"
 
-    client_info = client_handshake_result.client_info
-    cl_ip, cl_port = client_info.ip_address, client_info.port
-
     use_ipv6_tg = True
-    use_ipv6_clt = (":" in cl_ip)
 
     if use_ipv6_tg:
         addr, port = proxy.config_updater.pick_proxy_v6(client_handshake_result.dc_id)
@@ -309,7 +305,7 @@ async def do_middleproxy_handshake(proxy: 'MTProxy', client_handshake_result: Ha
     if handshake_type != RPC_HANDSHAKE or handshake_peer_pid != SENDER_PID:
         return False
 
-    writer_tgt = ProxyReqStreamWriter(writer_tgt, client_info, proxy.proxy_tag, my_ip, my_port)
+    writer_tgt = ProxyReqStreamWriter(writer_tgt, client_handshake_result.client_info, proxy.proxy_tag, my_ip, my_port)
     reader_tgt = ProxyReqStreamReader(reader_tgt)
 
     return reader_tgt, writer_tgt
