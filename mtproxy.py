@@ -11,7 +11,7 @@ from mtproxy import handshake
 from mtproxy.handshake import ClientInfo
 from mtproxy.proxy import direct
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.utils import config_updater, misc as umisc, stat_tracker
+from mtproxy.utils import config_updater, misc as umisc, stat_tracker, ip_getter
 
 LOGGER = logging.getLogger('mtproxy')
 
@@ -50,6 +50,14 @@ class MTProxy:
         self.servers = {}
         self.aux_tasks = set()
         self.pump_tasks = set()
+
+        if self.mode == MTProxy.Mode.MIDDLE_PROXY:
+            LOGGER.debug('Trying to get our IP address...')
+            self.ip_info = ip_getter.get_ip_info_sync()
+
+            if self.ip_info == (None, None):
+                LOGGER.warning('Failed to discover our external IP address, disabling MIDDLE_PROXY mode...')
+                self.mode = MTProxy.Mode.DIRECT_FAST
 
     @staticmethod
     def _convert_and_check_length(hex_str: Optional[str]) -> Optional[bytes]:
