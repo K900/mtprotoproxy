@@ -9,7 +9,7 @@ import socket
 
 from mtproxy import crypto
 from mtproxy.handshake import HandshakeResult
-from mtproxy.mtproto.rpc import RpcFlags
+from mtproxy.mtproto.constants import RpcFlags
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 CBC_PADDING = 16
@@ -186,7 +186,7 @@ def get_middleproxy_aes_key_and_iv(nonce_srv, nonce_clt, clt_ts, srv_ip, clt_por
     return key, iv
 
 
-async def do_middleproxy_handshake(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
+async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
     START_SEQ_NO = -2
     NONCE_LEN = 16
 

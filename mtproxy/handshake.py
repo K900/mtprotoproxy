@@ -7,9 +7,9 @@ from typing import Dict
 
 from mtproxy import crypto
 from mtproxy.mtproto import transports
+from mtproxy.mtproto.constants import DC_ID_POS, HANDSHAKE_LEN, PROTO_TAG_POS
 from mtproxy.mtproto.transports import AbstractTransport
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.utils.misc import DC_ID_POS, HANDSHAKE_LEN, PROTO_TAG_POS
 
 LOGGER = logging.getLogger('mtproxy.handshake')
 

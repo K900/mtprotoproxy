@@ -68,7 +68,7 @@ class ProxyConfigUpdater:
         return self._parse_proxy_list(await response.text())
 
     async def _load_secret(self, session: aiohttp.ClientSession) -> bytes:
-        LOGGER.debug(f'Loading proxy secret...')
+        LOGGER.debug(f'Loading upstream secret...')
         response = await self._api_request(session, 'getProxySecret')
         LOGGER.info('Proxy secret loaded')
         return await response.read()
@@ -89,7 +89,7 @@ class ProxyConfigUpdater:
             proxy_for, dc_id, host_port = line.split()
 
             if proxy_for != 'proxy_for':
-                raise ValueError(f'Invalid proxy config line: {line}')
+                raise ValueError(f'Invalid upstream config line: {line}')
 
             dc_id = int(dc_id)
             host, port = host_port.rsplit(':', maxsplit=1)

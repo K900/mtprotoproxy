@@ -1,14 +1,12 @@
 import asyncio
 import hashlib
-from typing import *
 import logging
-
-from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
+from typing import *
 
-from mtproxy.utils.misc import KEY_LEN, HANDSHAKE_HEADER_LEN, IV_LEN
+from mtproxy.mtproto.constants import HANDSHAKE_HEADER_LEN, IV_LEN, KEY_LEN
+from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 LOGGER = logging.getLogger('mtproxy.crypto')
 

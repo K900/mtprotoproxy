@@ -4,7 +4,7 @@ import random
 
 from mtproxy import crypto
 from mtproxy.handshake import HandshakeResult
-from mtproxy.utils.misc import HANDSHAKE_LEN, PROTO_TAG_POS, HANDSHAKE_HEADER_LEN, KEY_LEN, IV_LEN
+from mtproxy.mtproto.constants import HANDSHAKE_HEADER_LEN, HANDSHAKE_LEN, IV_LEN, KEY_LEN, PROTO_TAG_POS
 
 LOGGER = logging.getLogger('mtproxy.direct')
 

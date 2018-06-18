@@ -1,5 +1,12 @@
 import enum
 
+HANDSHAKE_HEADER_LEN = 8
+KEY_LEN = 32
+IV_LEN = 16
+HANDSHAKE_LEN = 64
+PROTO_TAG_POS = 56
+DC_ID_POS = 60
+
 
 class RpcFlags(enum.Flag):
     NONE = 0x0
