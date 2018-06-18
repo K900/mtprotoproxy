@@ -1,25 +1,9 @@
 import asyncio
-from abc import ABC, abstractmethod
 from typing import *
 
-from mtproxy.downstream.handshake import ClientInfo
+from mtproxy.downstream.types import AbstractTransport, ClientInfo
 from mtproxy.mtproto.constants import RpcFlags
 from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-
-
-class AbstractTransport(ABC):
-    PROTO_TAG = b''
-    HANDSHAKE_FLAGS = RpcFlags.EXTMODE2
-
-    @staticmethod
-    @abstractmethod
-    async def read_message(stream: asyncio.StreamReader) -> Tuple[bytes, bool]:
-        raise NotImplementedError
-
-    @staticmethod
-    @abstractmethod
-    def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
-        raise NotImplementedError
 
 
 class AbridgedTransport(AbstractTransport):

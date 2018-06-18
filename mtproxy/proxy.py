@@ -7,7 +7,7 @@ from typing import *
 
 from mtproxy.downstream import handshake
 from mtproxy.downstream.handshake import ClientInfo
-from mtproxy.downstream.transport import MtProtoReader, MtProtoWriter
+from mtproxy.downstream.transports import MtProtoReader, MtProtoWriter
 from mtproxy.upstream import direct, middle_proxy
 from mtproxy.tasks import config_updater, ip_getter, stat_tracker
 from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase

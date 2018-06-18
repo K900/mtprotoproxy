@@ -1,40 +1,15 @@
 import binascii
 
 import asyncio
-import dataclasses
 import logging
 from typing import Dict
 
-from mtproxy.utils import crypto
-from mtproxy.downstream import transport
+from mtproxy.downstream import transports
+from mtproxy.downstream.types import ClientInfo, HandshakeResult
 from mtproxy.mtproto.constants import DC_ID_POS, HANDSHAKE_LEN, PROTO_TAG_POS
-from mtproxy.downstream.transport import AbstractTransport
-from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
+from mtproxy.utils import crypto
 
 LOGGER = logging.getLogger('mtproxy.handshake')
-
-
-@dataclasses.dataclass
-class ClientInfo:
-    transport: AbstractTransport
-    proxy_username: str
-    ip_address: str
-    port: int
-    quick_ack_expected: bool = False
-
-
-@dataclasses.dataclass
-class HandshakeResult:
-    client_info: ClientInfo
-    dc_id: int
-    read_stream: LayeredStreamReaderBase
-    write_stream: LayeredStreamWriterBase
-    enc_key: bytes
-    enc_iv: int
-
-
-class HandshakeError(OSError):
-    pass
 
 
 async def handle_handshake(
@@ -55,7 +30,7 @@ async def handle_handshake(
         decrypted = dec_aes.decrypt(handshake)
 
         proto_tag = decrypted[PROTO_TAG_POS:PROTO_TAG_POS + 4]
-        transport = transport.get_transport_by_tag(proto_tag)
+        transport = transports.get_transport_by_tag(proto_tag)
         if transport is None:
             LOGGER.warning(f'Received unsupported protocol tag: {binascii.hexlify(proto_tag)}, maybe wrong secret?')
             continue

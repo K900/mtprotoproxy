@@ -28,12 +28,12 @@ def try_setup_limits():
 @click.option('--listen', '-l', multiple=True, type=(str, int), default=[('::', 3256), ('0.0.0.0', 3256)])
 @click.option('--secret', '-s', multiple=True, type=(str, str), required=True)
 @click.option('--mode', '-m', type=click.Choice(m.name for m in MTProxy.Mode))
-@click.option('--upstream-tag', '-t', type=str)
+@click.option('--proxy-tag', '-t', type=str)
 @click.option('--buffer-read', type=int, default=16384)
 @click.option('--buffer-write', type=int, default=65536)
 @click.option('--keepalive-timeout', type=int, default=40)
 @click.option('--stat-tracker-timeout', type=int, default=60)
-@click.option('--upstream-config-update-timeout', type=int, default=60 * 60)
+@click.option('--proxy-config-update-timeout', type=int, default=60 * 60)
 def main(
         listen: Tuple[Tuple[str, int]],
         secret: Tuple[Tuple[str, str]],

@@ -3,7 +3,7 @@ import hashlib
 import logging
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
-from typing import *
+from typing import Tuple
 
 from mtproxy.mtproto.constants import HANDSHAKE_HEADER_LEN, IV_LEN, KEY_LEN
 from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
