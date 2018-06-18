@@ -157,7 +157,7 @@ class MTProxy:
         self._stop_auxiliary()
         self.loop.close()
 
-    def _setup_socket(self, sock):
+    def setup_socket(self, sock):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         if hasattr(socket, "TCP_KEEPIDLE"):
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, self.keepalive_timeout)
@@ -194,7 +194,7 @@ class MTProxy:
         self.stat_tracker.track_pump_end(client_info)
 
     async def handle_client(self, client_read, client_write):
-        self._setup_socket(client_write.get_extra_info("socket"))
+        self.setup_socket(client_write.get_extra_info("socket"))
 
         use_fast_mode = (self.mode == MTProxy.Mode.DIRECT_FAST)
 
