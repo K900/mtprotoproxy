@@ -4,7 +4,6 @@ import time
 import asyncio
 import hashlib
 import logging
-import random
 import socket
 
 from mtproxy.downstream.handshake import HandshakeResult
@@ -109,21 +108,20 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         self.client_info = client_info
         self.proxy_tag = proxy_tag
 
-        cl_ip, cl_port = client_info.ip_address, client_info.port
-        if ':' not in cl_ip:
-            self.remote_ip_port = b'\x00' * 10 + b'\xff\xff'
-            self.remote_ip_port += socket.inet_pton(socket.AF_INET, cl_ip)
-        else:
-            self.remote_ip_port = socket.inet_pton(socket.AF_INET6, cl_ip)
-        self.remote_ip_port += int.to_bytes(cl_port, 4, 'little')
+        self.remote_ip_port = self._encode_ip_port(client_info.ip_address, client_info.port)
+        self.our_ip_port = self._encode_ip_port(my_ip, my_port)
 
-        if ':' not in my_ip:
-            self.our_ip_port = b'\x00' * 10 + b'\xff\xff'
-            self.our_ip_port += socket.inet_pton(socket.AF_INET, my_ip)
+        self.out_conn_id = crypto.random_bytes(8)
+
+    @staticmethod
+    def _encode_ip_port(address, port):
+        if ':' not in address:
+            result = b'\x00' * 10 + b'\xff\xff'
+            result += socket.inet_pton(socket.AF_INET, address)
         else:
-            self.our_ip_port = socket.inet_pton(socket.AF_INET6, my_ip)
-        self.our_ip_port += int.to_bytes(my_port, 4, 'little')
-        self.out_conn_id = bytearray([random.randrange(0, 256) for _ in range(8)])
+            result = socket.inet_pton(socket.AF_INET6, address)
+        result += int.to_bytes(port, 4, 'little')
+        return result
 
     def write(self, msg):
         RPC_PROXY_REQ = b'\xee\xf1\xce\x36'
@@ -222,7 +220,7 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
     key_selector = proxy.config_updater.proxy_secret[:4]
     crypto_ts = int.to_bytes(int(time.time()) % (256 ** 4), 4, 'little')
 
-    nonce = bytes([random.randrange(0, 256) for _ in range(NONCE_LEN)])
+    nonce = crypto.random_bytes(NONCE_LEN)
 
     msg = RPC_NONCE + key_selector + CRYPTO_AES + crypto_ts + nonce
 

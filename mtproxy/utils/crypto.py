@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import random
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
 from typing import Tuple
@@ -27,8 +28,12 @@ def init_aes_ctr(key: bytes, iv: int) -> AES:
     return AES.new(key, AES.MODE_CTR, counter=Counter.new(128, initial_value=iv))
 
 
-def init_aes_cbc(key, iv):
+def init_aes_cbc(key: bytes, iv: int) -> AES:
     return AES.new(key, AES.MODE_CBC, iv)
+
+
+def random_bytes(n: int) -> bytearray:
+    return bytearray([random.randrange(0, 256) for _ in range(n)])
 
 
 class AESReader(LayeredStreamReaderBase):

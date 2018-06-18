@@ -1,10 +1,9 @@
 import asyncio
 import logging
-import random
 
-from mtproxy.utils import crypto
 from mtproxy.downstream.handshake import HandshakeResult
 from mtproxy.mtproto.constants import HANDSHAKE_HEADER_LEN, HANDSHAKE_LEN, IV_LEN, KEY_LEN, PROTO_TAG_POS
+from mtproxy.utils import crypto
 
 LOGGER = logging.getLogger('mtproxy.direct')
 
@@ -73,7 +72,7 @@ async def connect(handshake_result: HandshakeResult, fast: bool = False):
     reader_tgt, writer_tgt = await _try_connect_by_id(handshake_result.dc_id)
 
     while True:
-        handshake = bytearray([random.randrange(0, 256) for _ in range(HANDSHAKE_LEN)])
+        handshake = crypto.random_bytes(HANDSHAKE_LEN)
         if handshake[:1] in RESERVED_NONCE_FIRST_CHARS:
             continue
         if handshake[:4] in RESERVED_NONCE_BEGINNINGS:
