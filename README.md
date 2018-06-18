@@ -19,10 +19,12 @@ All other dependencies are available on PyPI and will be downloaded by Pipenv au
     * Pass `0.0.0.0 1234` to listen on all IPv4 interfaces, port 1234.
     * Pass `:: 1234` to listen on all IPv6 interfaces, port 1234.
     * This option can be specified multiple times.
+    * The default is to listen on all interfaces, port 3256.
 * `--secret`, `-s` - specifies a `(username, secret)` pair for the server to accept from clients. The format is `username secret`.
     * The username is only used for statistics tracking.
     * The secret needs to be exactly 16 bytes, encoded in hexadecimal (without spaces). This is the same format most Telegram clients and t.me links use.
     * This option can be specified multiple times.
+    * This option is **REQUIRED** to be passed at least once.
 * `--mode`, `-m` - specifies a mode for the proxy to run in.
     * `DIRECT_FAST` - connects directly to Telegram's endpoint servers, same ones clients connect to. The traffic is not reencrypted in transit.
     * `DIRECT_SAFE` - same as `DIRECT_FAST`, with an additional layer of AES encryption between the proxy and Telegram servers.
