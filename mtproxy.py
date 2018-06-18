@@ -4,6 +4,8 @@ import asyncio
 import click
 import coloredlogs
 import logging
+import socket
+from contextlib import suppress
 from enum import Enum
 from typing import *
 
@@ -135,17 +137,23 @@ class MTProxy:
             server.close()
             self.loop.run_until_complete(server.wait_closed())
 
+    @staticmethod
+    async def _cancel_infinite(task: asyncio.Task):
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
     def _stop_pumps(self):
         LOGGER.debug('Shutting down pump workers...')
 
         for task in self.pump_tasks:
-            self.loop.run_until_complete(umisc.cancel_infinite(task))
+            self.loop.run_until_complete(self._cancel_infinite(task))
 
     def _stop_auxiliary(self):
         LOGGER.debug('Shutting down auxiliary tasks...')
 
         for task in self.aux_tasks:
-            self.loop.run_until_complete(umisc.cancel_infinite(task))
+            self.loop.run_until_complete(self._cancel_infinite(task))
 
     def stop(self):
         self._stop_servers()
@@ -154,8 +162,16 @@ class MTProxy:
         self.loop.close()
 
     def _setup_socket(self, sock):
-        umisc.set_bufsizes(sock, self.buffer_read, self.buffer_write)
-        umisc.set_keepalive(sock, self.keepalive_timeout)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        if hasattr(socket, "TCP_KEEPIDLE"):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, self.keepalive_timeout)
+        if hasattr(socket, "TCP_KEEPINTVL"):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, self.keepalive_timeout)
+        if hasattr(socket, "TCP_KEEPCNT"):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 5)
+
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.buffer_read)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, self.buffer_write)
 
     async def pump(
             self,
@@ -219,6 +235,19 @@ class MTProxy:
         asyncio.ensure_future(pump_out, loop=self.loop)
 
 
+def try_setup_limits():
+    try:
+        import resource
+
+        soft_fd_limit, hard_fd_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard_fd_limit, hard_fd_limit))
+    except (ValueError, OSError):
+        LOGGER.exception("Failed to increase RLIMIT_NOFILE - this shouldn't be an issue "
+                         "unless you have thousands of connections")
+    except ImportError:
+        LOGGER.debug('Resource limits are not supported on this platform - ignoring')
+
+
 @click.command('mtproxy')
 @click.option('--listen', '-l', multiple=True, type=(str, int), default=[('::', 3256), ('0.0.0.0', 3256)])
 @click.option('--secret', '-s', multiple=True, type=(str, str), required=True)
@@ -254,7 +283,7 @@ def main(
 
     LOGGER.info('Starting proxy...')
 
-    umisc.setup_limits()
+    try_setup_limits()
 
     LOGGER.debug('Starting server...')
 
