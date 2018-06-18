@@ -154,7 +154,6 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
             proxy_tag_bytes = PROXY_TAG + len(self.proxy_tag).to_bytes(1, 'big') + self.proxy_tag
             proxy_tag_bytes_aligned = align(proxy_tag_bytes, 4)
             full_msg += len(proxy_tag_bytes_aligned).to_bytes(4, 'little') + proxy_tag_bytes_aligned
-            logging.warning(f'proxy_tag_bytes: {binascii.hexlify(proxy_tag_bytes)}')
 
         full_msg += msg
 
