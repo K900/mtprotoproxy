@@ -4,7 +4,7 @@ from collections import defaultdict
 
 import dataclasses
 
-from mtproxy.handshake import ClientInfo
+from mtproxy.downstream.handshake import ClientInfo
 
 LOGGER = logging.getLogger('mtproxy.stat_tracker')
 

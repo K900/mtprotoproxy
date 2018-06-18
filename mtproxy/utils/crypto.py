@@ -6,7 +6,7 @@ from Crypto.Util import Counter
 from typing import *
 
 from mtproxy.mtproto.constants import HANDSHAKE_HEADER_LEN, IV_LEN, KEY_LEN
-from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
+from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 LOGGER = logging.getLogger('mtproxy.crypto')
 

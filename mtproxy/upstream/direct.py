@@ -2,8 +2,8 @@ import asyncio
 import logging
 import random
 
-from mtproxy import crypto
-from mtproxy.handshake import HandshakeResult
+from mtproxy.utils import crypto
+from mtproxy.downstream.handshake import HandshakeResult
 from mtproxy.mtproto.constants import HANDSHAKE_HEADER_LEN, HANDSHAKE_LEN, IV_LEN, KEY_LEN, PROTO_TAG_POS
 
 LOGGER = logging.getLogger('mtproxy.direct')

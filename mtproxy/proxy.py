@@ -5,12 +5,12 @@ from contextlib import suppress
 from enum import Enum
 from typing import *
 
-from mtproxy import handshake
-from mtproxy.handshake import ClientInfo
-from mtproxy.mtproto.streams import MtProtoReader, MtProtoWriter
+from mtproxy.downstream import handshake
+from mtproxy.downstream.handshake import ClientInfo
+from mtproxy.downstream.transport import MtProtoReader, MtProtoWriter
 from mtproxy.upstream import direct, middle_proxy
-from mtproxy.streams import LayeredStreamWriterBase, LayeredStreamReaderBase
-from mtproxy.utils import config_updater, ip_getter, stat_tracker
+from mtproxy.tasks import config_updater, ip_getter, stat_tracker
+from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 LOGGER = logging.getLogger('mtproxy.upstream')
 

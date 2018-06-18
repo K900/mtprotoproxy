@@ -7,10 +7,10 @@ import logging
 import random
 import socket
 
-from mtproxy import crypto
-from mtproxy.handshake import HandshakeResult
+from mtproxy.utils import crypto
+from mtproxy.downstream.handshake import HandshakeResult
 from mtproxy.mtproto.constants import RpcFlags
-from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
+from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 CBC_PADDING = 16
 PADDING_FILLER = b"\x04\x00\x00\x00"
