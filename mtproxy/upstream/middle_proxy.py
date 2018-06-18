@@ -7,10 +7,9 @@ import logging
 import random
 import socket
 
-from mtproxy.proxy import MTProxy
-from mtproxy.utils import crypto
 from mtproxy.downstream.handshake import HandshakeResult
 from mtproxy.mtproto.constants import RpcFlags
+from mtproxy.utils import crypto
 from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 CBC_PADDING = 16
