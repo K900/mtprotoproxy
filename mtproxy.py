@@ -84,8 +84,6 @@ class MTProxy:
 
         for conf in self.listen:
             host, port = conf
-
-            LOGGER.debug(f'Starting server for {host}:{port}...')
             self.servers[conf] = self._start_server(host, port)
 
     def _start_server(self, host, port):

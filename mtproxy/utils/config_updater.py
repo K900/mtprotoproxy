@@ -100,9 +100,6 @@ class ProxyConfigUpdater:
 
             LOGGER.debug(f'    parsed host: {host}, port: {port}, dc_id: {dc_id}')
 
-            if dc_id in proxies:
-                LOGGER.warning(f'Duplicate dc_id in proxy list: {dc_id}')
-
             proxies[dc_id].append((host, port))
 
         total_proxies = sum(len(s) for s in proxies.values())

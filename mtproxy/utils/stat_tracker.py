@@ -58,5 +58,4 @@ class StatTracker:
     async def log_loop(self):
         while True:
             self.log_all()
-            LOGGER.debug(f'Will now sleep for {self.log_timeout} seconds')
             await asyncio.sleep(self.log_timeout)
