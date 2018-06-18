@@ -5,7 +5,7 @@ import logging
 from typing import Dict
 
 from mtproxy.downstream import transports
-from mtproxy.downstream.types import ClientInfo, HandshakeResult
+from mtproxy.downstream.types import ClientInfo, HandshakeResult, HandshakeError
 from mtproxy.mtproto.constants import DC_ID_POS, HANDSHAKE_LEN, PROTO_TAG_POS
 from mtproxy.utils import crypto
 
