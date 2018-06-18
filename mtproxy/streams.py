@@ -1,6 +1,3 @@
-import asyncio
-
-
 class LayeredStreamReaderBase:
     def __init__(self, upstream):
         super().__init__()

@@ -6,6 +6,10 @@ name = "pypi"
 [packages]
 pycryptodome = "*"
 aiohttp = "*"
+dataclasses = "*"
+coloredlogs = "*"
+toml = "*"
+click = "*"
 
 [dev-packages]
 

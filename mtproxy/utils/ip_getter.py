@@ -1,28 +1,19 @@
-TIMEOUT = 5
+import aiohttp
+
+from typing import *
 
 
-def init_ip_info():
+async def _get_ip_info_one(session: aiohttp.ClientSession, mode: str) -> Optional[str]:
     try:
-        with urllib.request.urlopen('https://v4.ifconfig.co/ip', timeout=TIMEOUT) as f:
-            if f.status != 200:
-                raise Exception("Invalid status code")
-            my_ip_info["ipv4"] = f.read().decode().strip()
-    except Exception:
-        pass
+        response = await session.get(f'https://{mode}.ifconfig.co/ip')
+        text = await response.text()
+        return text
+    except aiohttp.ClientError:
+        return None
 
-    if PREFER_IPV6:
-        try:
-            with urllib.request.urlopen('https://v6.ifconfig.co/ip', timeout=TIMEOUT) as f:
-                if f.status != 200:
-                    raise Exception("Invalid status code")
-                my_ip_info["ipv6"] = f.read().decode().strip()
-        except Exception:
-            PREFER_IPV6 = False
-        else:
-            print_err("IPv6 found, using it for external communication")
 
-    if USE_MIDDLE_PROXY:
-        if ((not PREFER_IPV6 and not my_ip_info["ipv4"]) or
-                (PREFER_IPV6 and not my_ip_info["ipv6"])):
-            print_err("Failed to determine your ip, advertising disabled")
-            USE_MIDDLE_PROXY = False
+async def get_ip_info() -> Tuple[Optional[str], Optional[str]]:
+    async with aiohttp.ClientSession() as session:
+        ipv4 = await _get_ip_info_one(session, 'v4')
+        ipv6 = await _get_ip_info_one(session, 'v6')
+        return ipv4, ipv6

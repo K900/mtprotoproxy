@@ -29,11 +29,6 @@ def init_aes_ctr(key: bytes, iv: int) -> AES:
     return AES.new(key, AES.MODE_CTR, counter=Counter.new(128, initial_value=iv))
 
 
-def parse_and_init_aes_ctr(key_iv: bytes, secret: bytes = None) -> AES:
-    key, iv = parse_key_iv(key_iv)
-    return init_aes_ctr(key, iv, secret)
-
-
 def init_aes_cbc(key, iv):
     return AES.new(key, AES.MODE_CBC, iv)
 

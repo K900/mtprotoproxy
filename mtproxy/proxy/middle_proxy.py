@@ -1,6 +1,7 @@
 import binascii
 import socket
 
+from mtproxy import crypto
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 from mtproxy.utils.misc import RpcFlags
 
@@ -16,10 +17,11 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
         super().__init__(upstream)
         self.seq_no = seq_no
 
-    async def read(self, buf_size):
+    async def read(self, buf_size=-1):
         msg_len_bytes = await self.upstream.readexactly(4)
         msg_len = int.from_bytes(msg_len_bytes, "little")
-        # skip paddings
+
+        # skip padding
         while msg_len == 4:
             msg_len_bytes = await self.upstream.readexactly(4)
             msg_len = int.from_bytes(msg_len_bytes, "little")

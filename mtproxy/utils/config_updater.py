@@ -5,8 +5,6 @@ from typing import *
 
 import aiohttp
 
-from mtproxy import config
-
 LOGGER = logging.getLogger('mtproxy.proxy_config')
 
 API_BASE_URL = 'https://core.telegram.org/'
@@ -50,26 +48,26 @@ TProxyConfig = Dict[int, Set[Tuple[str, int]]]
 
 
 class ProxyConfigUpdater:
-    def __init__(self, http_session: aiohttp.ClientSession, update_timeout: int = config.get('config_update_timeout')):
+    def __init__(self, update_timeout: int):
         self.proxy_list_v4 = DEFAULT_PROXIES_V4
         self.proxy_list_v6 = DEFAULT_PROXIES_V6
         self.proxy_secret = DEFAULT_PROXY_SECRET
 
-        self.session = http_session
         self.update_timeout = update_timeout
 
-    async def _api_request(self, method: str) -> aiohttp.ClientResponse:
-        return await self.session.get(API_BASE_URL + method)
+    @staticmethod
+    async def _api_request(session: aiohttp.ClientSession, method: str) -> aiohttp.ClientResponse:
+        return await session.get(API_BASE_URL + method)
 
-    async def _load_and_parse_proxies(self, method: str) -> TProxyConfig:
+    async def _load_and_parse_proxies(self, session: aiohttp.ClientSession, method: str) -> TProxyConfig:
         LOGGER.info(f'Loading proxies from {method}...')
-        response = await self._api_request(method)
+        response = await self._api_request(session, method)
         LOGGER.debug(f'Proxy config loaded, parsing...')
         return self._parse_proxy_list(await response.text())
 
-    async def _load_secret(self) -> bytes:
+    async def _load_secret(self, session: aiohttp.ClientSession) -> bytes:
         LOGGER.debug(f'Loading proxy secret...')
-        response = await self._api_request('getProxySecret')
+        response = await self._api_request(session, 'getProxySecret')
         LOGGER.info('Proxy secret loaded')
         return response.content
 
@@ -110,26 +108,12 @@ class ProxyConfigUpdater:
 
         return proxies
 
-    async def _update_all(self) -> None:
-        self.proxy_list_v4 = await self._load_and_parse_proxies('getProxyConfig')
-        self.proxy_list_v6 = await self._load_and_parse_proxies('getProxyConfigV6')
-        self.proxy_secret = await self._load_secret()
-
     async def update_loop(self) -> None:
-        while True:
-            await self._update_all()
-            LOGGER.debug(f'Will now sleep for {self.update_timeout} seconds')
-            await asyncio.sleep(self.update_timeout)
-
-
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    loop = asyncio.get_event_loop()
-
-
-    async def wrapper():
         async with aiohttp.ClientSession() as session:
-            await ProxyConfigUpdater(session).update_loop()
+            while True:
+                self.proxy_list_v4 = await self._load_and_parse_proxies(session, 'getProxyConfig')
+                self.proxy_list_v6 = await self._load_and_parse_proxies(session, 'getProxyConfigV6')
+                self.proxy_secret = await self._load_secret(session)
 
-
-    loop.run_until_complete(wrapper())
+                LOGGER.debug(f'Will now sleep for {self.update_timeout} seconds')
+                await asyncio.sleep(self.update_timeout)

@@ -1,7 +1,8 @@
+import asyncio
+
 import logging
 import socket
-
-from mtproxy import config
+from contextlib import suppress
 
 LOGGER = logging.getLogger('mtproxy.utils.misc')
 
@@ -18,7 +19,7 @@ DC_ID_POS = 60
 
 def set_keepalive(
         sock: socket.socket,
-        interval: int = config.get('client_keepalive'),
+        interval: int,
         attempts: int = 5
 ):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
@@ -32,16 +33,11 @@ def set_keepalive(
 
 def set_bufsizes(
         sock: socket.socket,
-        recv_buf: int = config.get('buffer_read'),
-        send_buf: int = config.get('buffer_write')
+        recv_buf: int,
+        send_buf: int
 ):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, recv_buf)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, send_buf)
-
-
-def setup_socket(sock: socket.socket):
-    set_keepalive(sock)
-    set_bufsizes(sock)
 
 
 def setup_limits():
@@ -55,3 +51,9 @@ def setup_limits():
                          "unless you have thousands of connections")
     except ImportError:
         LOGGER.debug('Resource limits are not supported on this platform - ignoring')
+
+
+async def cancel_infinite(task: asyncio.Task):
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task

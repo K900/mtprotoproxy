@@ -1,16 +1,15 @@
-import asyncio
 import binascii
+
+import asyncio
+import dataclasses
 import logging
 from typing import Dict
 
-import dataclasses
-
 from mtproxy import crypto
 from mtproxy.mtproto import transports
-from mtproxy.mtproto.transports import AbstractTransport, Optional
+from mtproxy.mtproto.transports import AbstractTransport
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.utils.misc import HANDSHAKE_LEN, PROTO_TAG_POS, DC_ID_POS
-
+from mtproxy.utils.misc import DC_ID_POS, HANDSHAKE_LEN, PROTO_TAG_POS
 
 LOGGER = logging.getLogger('mtproxy.handshake')
 
@@ -43,13 +42,11 @@ async def handle_handshake(
         writer: asyncio.StreamWriter,
         secrets: Dict[str, bytes],
         fast: bool = False
-) -> Optional[HandshakeResult]:
+) -> HandshakeResult:
     handshake = await reader.readexactly(HANDSHAKE_LEN)
     peer = writer.get_extra_info('peername')
 
     for username, secret in secrets.items():
-        secret = bytes.fromhex(secret)
-
         dec_prekey_and_iv = crypto.key_iv_from_handshake(handshake)
         dec_prekey, dec_iv = crypto.parse_key_iv(dec_prekey_and_iv)
         dec_key = crypto.derive_key(dec_prekey, secret)
@@ -92,8 +89,6 @@ async def handle_handshake(
             enc_key=enc_key,
             enc_iv=enc_iv
         )
-
-        LOGGER.debug(f'Handshake result: {handshake_result}')
 
         return handshake_result
 

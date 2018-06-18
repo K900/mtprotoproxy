@@ -4,7 +4,6 @@ from collections import defaultdict
 
 import dataclasses
 
-from mtproxy import config
 from mtproxy.handshake import ClientInfo
 
 LOGGER = logging.getLogger('mtproxy.stat_tracker')
@@ -30,7 +29,7 @@ class Statistic:
 
 
 class StatTracker:
-    def __init__(self, log_timeout: int = config.get('stat_log_timeout')):
+    def __init__(self, log_timeout):
         self.stats = defaultdict(Statistic)
         self.log_timeout = log_timeout
 
@@ -61,6 +60,3 @@ class StatTracker:
             self.log_all()
             LOGGER.debug(f'Will now sleep for {self.log_timeout} seconds')
             await asyncio.sleep(self.log_timeout)
-
-
-tracker = StatTracker()
