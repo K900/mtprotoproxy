@@ -1,6 +1,8 @@
 import asyncio
 import logging
 from collections import defaultdict
+
+import random
 from typing import *
 
 import aiohttp
@@ -44,7 +46,7 @@ DEFAULT_PROXY_SECRET = bytes.fromhex(
     '54c490b079e31bef82ff0ee8f2b0a32756d249c5f21269816cb7061b265db212'
 )
 
-TProxyConfig = Dict[int, Set[Tuple[str, int]]]
+TProxyConfig = Dict[int, List[Tuple[str, int]]]
 
 
 class ProxyConfigUpdater:
@@ -69,11 +71,11 @@ class ProxyConfigUpdater:
         LOGGER.debug(f'Loading proxy secret...')
         response = await self._api_request(session, 'getProxySecret')
         LOGGER.info('Proxy secret loaded')
-        return response.content
+        return await response.read()
 
     @staticmethod
     def _parse_proxy_list(text: str) -> TProxyConfig:
-        proxies = defaultdict(set)
+        proxies = defaultdict(list)
 
         for line in text.split('\n'):
             line = line.strip()
@@ -101,7 +103,7 @@ class ProxyConfigUpdater:
             if dc_id in proxies:
                 LOGGER.warning(f'Duplicate dc_id in proxy list: {dc_id}')
 
-            proxies[dc_id].add((host, port))
+            proxies[dc_id].append((host, port))
 
         total_proxies = sum(len(s) for s in proxies.values())
         LOGGER.info(f'Proxies parsed: {total_proxies}')
@@ -117,3 +119,9 @@ class ProxyConfigUpdater:
 
                 LOGGER.debug(f'Will now sleep for {self.update_timeout} seconds')
                 await asyncio.sleep(self.update_timeout)
+
+    def pick_proxy_v4(self, dc_id):
+        return random.choice(self.proxy_list_v4[dc_id])
+
+    def pick_proxy_v6(self, dc_id):
+        return random.choice(self.proxy_list_v6[dc_id])

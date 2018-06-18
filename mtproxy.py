@@ -9,9 +9,10 @@ from typing import *
 
 from mtproxy import handshake
 from mtproxy.handshake import ClientInfo
-from mtproxy.proxy import direct
+from mtproxy.mtproto.streams import MtProtoReader, MtProtoWriter
+from mtproxy.proxy import direct, middle_proxy
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-from mtproxy.utils import config_updater, misc as umisc, stat_tracker, ip_getter
+from mtproxy.utils import config_updater, ip_getter, misc as umisc, stat_tracker
 
 LOGGER = logging.getLogger('mtproxy')
 
@@ -50,6 +51,9 @@ class MTProxy:
         self.servers = {}
         self.aux_tasks = set()
         self.pump_tasks = set()
+
+        if self.proxy_tag is None:
+            self.proxy_tag = b'0' * 16
 
         if self.mode == MTProxy.Mode.MIDDLE_PROXY:
             LOGGER.debug('Trying to get our IP address...')
@@ -195,35 +199,23 @@ class MTProxy:
         )
 
         if self.mode in (
-            MTProxy.Mode.DIRECT_FAST,
-            MTProxy.Mode.DIRECT_SAFE
+                MTProxy.Mode.DIRECT_FAST,
+                MTProxy.Mode.DIRECT_SAFE
         ):
-            reader_tg, writer_tg = await direct.connect(result, fast=use_fast_mode)
+            tg_read, tg_write = await direct.connect(result, fast=use_fast_mode)
+            client_read = result.read_stream
+            client_write = result.write_stream
+        elif self.mode == MTProxy.Mode.MIDDLE_PROXY:
+            tg_read, tg_write = await middle_proxy.do_middleproxy_handshake(self, result)
+            client_read = MtProtoReader(result.read_stream, result.client_info)
+            client_write = MtProtoWriter(result.write_stream, result.client_info)
         else:
-            raise NotImplemented
+            raise ValueError(f'Unknown mode: {self.mode}')
 
         self.stat_tracker.track_connected(result.client_info)
 
-        # if not USE_MIDDLE_PROXY:
-        # else:
-        #     flags = RpcFlags.EXTMODE2
-        #     if proto_tag == PROTO_TAG_ABRIDGED:
-        #         flags |= RpcFlags.PROTOCOL_ABRIDGED
-        #     elif proto_tag == PROTO_TAG_INTERMEDIATE:
-        #         flags |= RpcFlags.PROTOCOL_INTERMEDIATE
-        #
-        #     tg_data = await do_middleproxy_handshake(peer, flags, dc_idx)
-
-        # if USE_MIDDLE_PROXY:
-        #     if proto_tag == PROTO_TAG_ABRIDGED:
-        #         reader_clt = MTProtoCompactFrameStreamReader(reader_clt, peer)
-        #         writer_clt = MTProtoCompactFrameStreamWriter(writer_clt)
-        #     elif proto_tag == PROTO_TAG_INTERMEDIATE:
-        #         reader_clt = MTProtoIntermediateFrameStreamReader(reader_clt, peer)
-        #         writer_clt = MTProtoIntermediateFrameStreamWriter(writer_clt)
-
-        pump_in = asyncio.Task(self.pump(reader_tg, result.write_stream, result.client_info))
-        pump_out = asyncio.Task(self.pump(result.read_stream, writer_tg, result.client_info))
+        pump_in = asyncio.Task(self.pump(client_read, tg_write, result.client_info))
+        pump_out = asyncio.Task(self.pump(tg_read, client_write, result.client_info))
 
         self.pump_tasks.add(pump_in)
         self.pump_tasks.add(pump_out)

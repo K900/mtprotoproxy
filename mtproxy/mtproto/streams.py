@@ -1,24 +1,22 @@
-import asyncio
-
 from mtproxy.handshake import ClientInfo
 from mtproxy.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 
 class MtProtoReader(LayeredStreamReaderBase):
-    def __init__(self, upstream: asyncio.StreamReader, client_ctx: ClientInfo):
+    def __init__(self, upstream: LayeredStreamReaderBase, client_info: ClientInfo):
         super().__init__(upstream)
-        self.client_ctx = client_ctx
+        self.client_info = client_info
 
     async def read(self, n=-1):
-        message, quick_ack_expected = await self.client_ctx.transport.read_message(self.upstream)
-        self.client_ctx.quick_ack_expected = quick_ack_expected
+        message, quick_ack_expected = await self.client_info.transport.read_message(self.upstream)
+        self.client_info.quick_ack_expected = quick_ack_expected
         return message
 
 
 class MtProtoWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream: asyncio.StreamWriter, client_ctx: ClientInfo):
+    def __init__(self, upstream: LayeredStreamWriterBase, client_info: ClientInfo):
         super().__init__(upstream)
-        self.client_ctx = client_ctx
+        self.client_info = client_info
 
-    async def write(self, msg: bytes) -> int:
-        return await self.client_ctx.transport.write_message(self.upstream, msg)
+    def write(self, msg: bytes) -> int:
+        return self.client_info.transport.write_message(self.upstream, msg)

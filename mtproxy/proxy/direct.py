@@ -8,35 +8,35 @@ from mtproxy.utils.misc import HANDSHAKE_LEN, PROTO_TAG_POS, HANDSHAKE_HEADER_LE
 
 LOGGER = logging.getLogger('mtproxy.direct')
 
-RESERVED_NONCE_FIRST_CHARS = [b"\xef"]
-RESERVED_NONCE_BEGINNINGS = [b"\x48\x45\x41\x44", b"\x50\x4F\x53\x54",
-                             b"\x47\x45\x54\x20", b"\xee\xee\xee\xee"]
-RESERVED_NONCE_CONTINUES = [b"\x00\x00\x00\x00"]
+RESERVED_NONCE_FIRST_CHARS = [b'\xef']
+RESERVED_NONCE_BEGINNINGS = [b'\x48\x45\x41\x44', b'\x50\x4F\x53\x54',
+                             b'\x47\x45\x54\x20', b'\xee\xee\xee\xee']
+RESERVED_NONCE_CONTINUES = [b'\x00\x00\x00\x00']
 
 TG_DATA_CENTERS_V4 = {
-    1: "149.154.175.50",
-    -1: "149.154.175.50",
-    2: "149.154.167.51",
-    -2: "149.154.167.51",
-    3: "149.154.175.100",
-    -3: "149.154.175.100",
-    4: "149.154.167.91",
-    -4: "149.154.167.91",
-    5: "149.154.171.5",
-    -5: "149.154.171.5"
+    1: '149.154.175.50',
+    -1: '149.154.175.50',
+    2: '149.154.167.51',
+    -2: '149.154.167.51',
+    3: '149.154.175.100',
+    -3: '149.154.175.100',
+    4: '149.154.167.91',
+    -4: '149.154.167.91',
+    5: '149.154.171.5',
+    -5: '149.154.171.5'
 }
 
 TG_DATA_CENTERS_V6 = {
-    1: "2001:b28:f23d:f001::a",
-    -1: "2001:b28:f23d:f001::a",
-    2: "2001:67c:04e8:f002::a",
-    -2: "2001:67c:04e8:f002::a",
-    3: "2001:b28:f23d:f003::a",
-    -3: "2001:b28:f23d:f003::a",
-    4: "2001:67c:04e8:f004::a",
-    -4: "2001:67c:04e8:f004::a",
-    5: "2001:b28:f23f:f005::a",
-    -5: "2001:b28:f23f:f005::a"
+    1: '2001:b28:f23d:f001::a',
+    -1: '2001:b28:f23d:f001::a',
+    2: '2001:67c:04e8:f002::a',
+    -2: '2001:67c:04e8:f002::a',
+    3: '2001:b28:f23d:f003::a',
+    -3: '2001:b28:f23d:f003::a',
+    4: '2001:67c:04e8:f004::a',
+    -4: '2001:67c:04e8:f004::a',
+    5: '2001:b28:f23f:f005::a',
+    -5: '2001:b28:f23f:f005::a'
 }
 
 TG_DATA_CENTER_PORT = 443
@@ -45,27 +45,27 @@ TG_DATA_CENTER_PORT = 443
 async def _try_connect(dc):
     try:
         result = await asyncio.open_connection(dc, TG_DATA_CENTER_PORT, limit=16384)
-        LOGGER.info(f'Successfully connected to server {dc}!')
+        LOGGER.info(f'Successfully connected to upstream server {dc}!')
         return result
     except ConnectionRefusedError:
-        LOGGER.exception(f'Data center server {dc} refused connection')
+        LOGGER.exception(f'Upstream server {dc} refused connection')
     except OSError:
-        LOGGER.exception(f'Failed to connect to data center server {dc}')
+        LOGGER.exception(f'Failed to connect to upstream server {dc}')
 
 
 async def _try_connect_by_id(dc_id):
-    LOGGER.debug(f'Attempting to connect to dc_id={dc_id}')
+    LOGGER.debug(f'Attempting to connect to upstream dc_id={dc_id}')
 
     result = await _try_connect(TG_DATA_CENTERS_V6[dc_id])
     if result:
         return result
 
-    LOGGER.error(f'Failed to connect to dc_id={dc_id} over IPv6, trying IPv4...')
+    LOGGER.error(f'Failed to connect to upstream dc_id={dc_id} over IPv6, trying IPv4...')
     result = await _try_connect(TG_DATA_CENTERS_V4[dc_id])
     if result:
         return result
 
-    LOGGER.error(f'Failed to connect to dc_id={dc_id} over IPv4, we die now')
+    LOGGER.error(f'Failed to connect to upstream dc_id={dc_id} over IPv4, we die now')
     raise OSError(f'Unable to connect to dc_id={dc_id}')
 
 

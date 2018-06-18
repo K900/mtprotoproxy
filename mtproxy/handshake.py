@@ -60,7 +60,7 @@ async def handle_handshake(
             LOGGER.warning(f'Received unsupported protocol tag: {binascii.hexlify(proto_tag)}, maybe wrong secret?')
             continue
 
-        dc_id = int.from_bytes(decrypted[DC_ID_POS:DC_ID_POS + 2], "little", signed=True)
+        dc_id = int.from_bytes(decrypted[DC_ID_POS:DC_ID_POS + 2], 'little', signed=True)
 
         client_info = ClientInfo(
             transport=transport,

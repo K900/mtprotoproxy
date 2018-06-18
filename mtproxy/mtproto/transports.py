@@ -7,6 +7,7 @@ from mtproxy.mtproto.rpc import RpcFlags
 
 class AbstractTransport(ABC):
     PROTO_TAG = b''
+    HANDSHAKE_FLAGS = RpcFlags.EXTMODE2
 
     @staticmethod
     @abstractmethod
@@ -15,12 +16,13 @@ class AbstractTransport(ABC):
 
     @staticmethod
     @abstractmethod
-    async def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
+    def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
         raise NotImplementedError
 
 
 class AbridgedTransport(AbstractTransport):
     PROTO_TAG = b'\xef\xef\xef\xef'
+    HANDSHAKE_FLAGS = RpcFlags.EXTMODE2 | RpcFlags.PROTOCOL_ABRIDGED
 
     SHORT_PACKET_MAX_SIZE = 0x7f
     LONG_PACKET_MAX_SIZE = 2 ** 24
@@ -46,7 +48,7 @@ class AbridgedTransport(AbstractTransport):
         return msg, quick_ack_expected
 
     @staticmethod
-    async def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
+    def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
         if len(msg) % 4 != 0:
             # logging("BUG: MTProtoFrameStreamWriter attempted to send msg with len %d" % len(data))
             return 0
@@ -64,6 +66,7 @@ class AbridgedTransport(AbstractTransport):
 
 class IntermediateTransport(AbstractTransport):
     PROTO_TAG = b'\xee\xee\xee\xee'
+    HANDSHAKE_FLAGS = RpcFlags.EXTMODE2 | RpcFlags.PROTOCOL_INTERMEDIATE
 
     @staticmethod
     async def read_message(stream: asyncio.StreamReader) -> Tuple[bytes, bool]:
@@ -80,7 +83,7 @@ class IntermediateTransport(AbstractTransport):
         return msg, quick_ack_expected
 
     @staticmethod
-    async def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
+    def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
         return stream.write(int.to_bytes(len(msg), 4, 'little') + msg)
 
 
