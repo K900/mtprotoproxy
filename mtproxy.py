@@ -52,9 +52,6 @@ class MTProxy:
         self.aux_tasks = set()
         self.pump_tasks = set()
 
-        if self.proxy_tag is None:
-            self.proxy_tag = b'0' * 16
-
         if self.mode == MTProxy.Mode.MIDDLE_PROXY:
             LOGGER.debug('Trying to get our IP address...')
             self.ip_info = ip_getter.get_ip_info_sync()

@@ -127,7 +127,6 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
 
     def write(self, msg):
         RPC_PROXY_REQ = b"\xee\xf1\xce\x36"
-        EXTRA_SIZE = b"\x18\x00\x00\x00"
         PROXY_TAG = b"\xae\x26\x1e\xdb"
 
         if len(msg) % 4 != 0:
@@ -138,11 +137,6 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
 
         if self.proxy_tag:
             flags |= RpcFlags.HAS_AD_TAG
-            proxy_tag_bytes = len(self.proxy_tag).to_bytes(1, 'big') + self.proxy_tag
-        else:
-            proxy_tag_bytes = b'\x00'
-
-        logging.warning(f'proxy_tag_bytes: {binascii.hexlify(proxy_tag_bytes)}')
 
         if self.client_info.quick_ack_expected:
             flags |= RpcFlags.QUICKACK
@@ -154,8 +148,14 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
 
         full_msg = bytearray()
         full_msg += RPC_PROXY_REQ + flags + self.out_conn_id
-        full_msg += self.remote_ip_port + self.our_ip_port + EXTRA_SIZE + PROXY_TAG
-        full_msg += align(proxy_tag_bytes, 4)
+        full_msg += self.remote_ip_port + self.our_ip_port
+
+        if self.proxy_tag:
+            proxy_tag_bytes = PROXY_TAG + len(self.proxy_tag).to_bytes(1, 'big') + self.proxy_tag
+            proxy_tag_bytes_aligned = align(proxy_tag_bytes, 4)
+            full_msg += len(proxy_tag_bytes_aligned).to_bytes(4, 'little') + proxy_tag_bytes_aligned
+            logging.warning(f'proxy_tag_bytes: {binascii.hexlify(proxy_tag_bytes)}')
+
         full_msg += msg
 
         return self.upstream.write(full_msg)
