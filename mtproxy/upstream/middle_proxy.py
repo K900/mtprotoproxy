@@ -200,7 +200,7 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
     # pass as consts to simplify code
     RPC_FLAGS = b'\x00\x00\x00\x00'
 
-    use_ipv6_tg = True
+    use_ipv6_tg = False
 
     if use_ipv6_tg:
         addr, port = proxy.config_updater.pick_proxy_v6(client_handshake_result.dc_id)
