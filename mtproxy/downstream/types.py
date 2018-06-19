@@ -22,7 +22,7 @@ class AbstractTransport(ABC):
 
     @staticmethod
     @abstractmethod
-    def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
+    def write_message(stream: asyncio.StreamWriter, msg: bytes, simple_ack: bool) -> int:
         raise NotImplementedError
 
 
@@ -33,6 +33,7 @@ class ClientInfo:
     ip_address: str
     port: int
     quick_ack_expected: bool = False
+    simple_ack_expected: bool = False
 
 
 @dataclasses.dataclass

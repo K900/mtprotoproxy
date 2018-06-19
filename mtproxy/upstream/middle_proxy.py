@@ -77,24 +77,36 @@ class MTProtoFrameStreamWriter(LayeredStreamWriterBase):
 
 
 class ProxyReqStreamReader(LayeredStreamReaderBase):
+    def __init__(self, upstream, client_info):
+        super().__init__(upstream)
+        self.client_info = client_info
+
     async def read(self, n=-1):
         RPC_PROXY_ANS = b'\x0d\xda\x03\x44'
         RPC_CLOSE_EXT = b'\xa2\x34\xb6\x5e'
+        RPC_SIMPLE_ACK = b'\x9b\x40\xac\x3b'
 
         data = await self.upstream.read(1)
 
         if len(data) < 4:
             return b''
 
-        ans_type, ans_flags, conn_id, conn_data = data[:4], data[4:8], data[8:16], data[16:]
-        if ans_type == RPC_CLOSE_EXT:
+        msg_type = data[:4]
+
+        if msg_type == RPC_CLOSE_EXT:
             return b''
 
-        if ans_type != RPC_PROXY_ANS:
-            LOGGER.warning('ans_type != RPC_PROXY_ANS', ans_type)
-            return b''
+        if msg_type == RPC_PROXY_ANS:
+            flags, conn_id, data = data[4:8], data[8:16], data[16:]
+            return data
 
-        return conn_data
+        if msg_type == RPC_SIMPLE_ACK:
+            conn_id, ack = data[4:12], data[12:]
+            self.client_info.simple_ack_expected = True
+            return ack
+
+        LOGGER.warning(f'Unsupported message type: {binascii.hexlify(msg_type)}')
+        return b''
 
 
 def align(b, s):
@@ -303,6 +315,6 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
         return False
 
     writer_tgt = ProxyReqStreamWriter(writer_tgt, client_handshake_result.client_info, proxy.proxy_tag, my_ip, my_port)
-    reader_tgt = ProxyReqStreamReader(reader_tgt)
+    reader_tgt = ProxyReqStreamReader(reader_tgt, client_handshake_result.client_info)
 
     return reader_tgt, writer_tgt

@@ -1,9 +1,13 @@
 import asyncio
+import logging
 from typing import *
 
 from mtproxy.downstream.types import AbstractTransport, ClientInfo
 from mtproxy.mtproto.constants import RpcFlags
 from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
+
+
+LOGGER = logging.getLogger('mtproxy.transports')
 
 
 class AbridgedTransport(AbstractTransport):
@@ -34,10 +38,13 @@ class AbridgedTransport(AbstractTransport):
         return msg, quick_ack_expected
 
     @staticmethod
-    def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
+    def write_message(stream: asyncio.StreamWriter, msg: bytes, simple_ack: bool) -> int:
         if len(msg) % 4 != 0:
-            # logging("BUG: MTProtoFrameStreamWriter attempted to send msg with len %d" % len(data))
+            LOGGER.warning(f'MTProto abridged message length not aligned on 4: {len(msg)}')
             return 0
+
+        if simple_ack:
+            return stream.write(b'\xdd' + msg[::1])
 
         len_div_four = len(msg) // 4
 
@@ -46,7 +53,7 @@ class AbridgedTransport(AbstractTransport):
         elif len_div_four < AbridgedTransport.LONG_PACKET_MAX_SIZE:
             return stream.write(b'\x7f' + int.to_bytes(len_div_four, 3, 'little') + msg)
         else:
-            # print_err("Attempted to send too large pkt len =", len(data))
+            LOGGER.warning(f'MTProto abridged message too long: {len(msg)}')
             return 0
 
 
@@ -69,7 +76,9 @@ class IntermediateTransport(AbstractTransport):
         return msg, quick_ack_expected
 
     @staticmethod
-    def write_message(stream: asyncio.StreamWriter, msg: bytes) -> int:
+    def write_message(stream: asyncio.StreamWriter, msg: bytes, simple_ack: bool) -> int:
+        if simple_ack:
+            return stream.write(b'\xdd' + msg)
         return stream.write(int.to_bytes(len(msg), 4, 'little') + msg)
 
 
@@ -99,4 +108,4 @@ class MtProtoWriter(LayeredStreamWriterBase):
         self.client_info = client_info
 
     def write(self, msg: bytes) -> int:
-        return self.client_info.transport.write_message(self.upstream, msg)
+        return self.client_info.transport.write_message(self.upstream, msg, self.client_info.simple_ack_expected)
