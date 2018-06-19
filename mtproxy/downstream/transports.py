@@ -3,6 +3,7 @@ import logging
 
 from mtproxy.downstream.types import AbstractTransport, MTProtoMessage, RPCProxyAnswer, RPCSimpleAck
 from mtproxy.mtproto.constants import RpcFlags
+from mtproxy.utils.streams import AioByteReader
 
 LOGGER = logging.getLogger('mtproxy.transports')
 
@@ -15,23 +16,23 @@ class AbridgedTransport(AbstractTransport):
     LONG_PACKET_MAX_SIZE = 2 ** 24
 
     @staticmethod
-    async def read_message(stream: asyncio.StreamReader) -> MTProtoMessage:
-        msg_len_bytes = await stream.readexactly(1)
+    async def read_message(stream: AioByteReader) -> MTProtoMessage:
+        msg_len_bytes = await stream.read_bytes(1)
         msg_len = int.from_bytes(msg_len_bytes, "little")
 
-        if msg_len >= 0x80:
+        if msg_len & 0x80:
+            msg_len &= ~0x80
             quick_ack_expected = True
-            msg_len -= 0x80
         else:
             quick_ack_expected = False
 
         if msg_len == 0x7f:
-            msg_len_bytes = await stream.readexactly(3)
+            msg_len_bytes = await stream.read_bytes(3)
             msg_len = int.from_bytes(msg_len_bytes, "little")
 
         msg_len *= 4
 
-        msg = await stream.readexactly(msg_len)
+        msg = await stream.read_bytes(msg_len)
         return MTProtoMessage(msg, quick_ack_expected)
 
     @staticmethod
@@ -59,8 +60,8 @@ class IntermediateTransport(AbstractTransport):
     HANDSHAKE_FLAGS = RpcFlags.EXTMODE2 | RpcFlags.PROTOCOL_INTERMEDIATE
 
     @staticmethod
-    async def read_message(stream: asyncio.StreamReader) -> MTProtoMessage:
-        msg_len_bytes = await stream.readexactly(4)
+    async def read_message(stream: AioByteReader) -> MTProtoMessage:
+        msg_len_bytes = await stream.read_bytes(4)
         msg_len = int.from_bytes(msg_len_bytes, "little")
 
         if msg_len & RpcFlags.QUICKACK.value:
@@ -69,7 +70,7 @@ class IntermediateTransport(AbstractTransport):
         else:
             quick_ack_expected = False
 
-        msg = await stream.readexactly(msg_len)
+        msg = await stream.read_bytes(msg_len)
         return MTProtoMessage(msg, quick_ack_expected)
 
     @staticmethod

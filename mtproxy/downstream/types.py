@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Union
 
 from mtproxy.mtproto.constants import RpcFlags
-from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
+from mtproxy.utils.streams import AbstractByteReader
 
 
 @dataclasses.dataclass
@@ -16,6 +16,10 @@ class RPCProxyAnswer:
 @dataclasses.dataclass
 class RPCSimpleAck:
     data: bytes
+
+
+class RPCGoodbye:
+    pass
 
 
 TRPCProxyResponse = Union[RPCProxyAnswer, RPCSimpleAck]
@@ -37,7 +41,7 @@ class AbstractTransport(ABC):
 
     @staticmethod
     @abstractmethod
-    async def read_message(stream: asyncio.StreamReader) -> MTProtoMessage:
+    async def read_message(stream: AbstractByteReader) -> MTProtoMessage:
         raise NotImplementedError
 
     @classmethod
@@ -74,7 +78,7 @@ class ClientInfo:
 class HandshakeResult:
     client_info: ClientInfo
     dc_id: int
-    read_stream: LayeredStreamReaderBase
-    write_stream: LayeredStreamWriterBase
+    read_stream: AbstractByteReader
+    write_stream: asyncio.StreamWriter
     enc_key: bytes
     enc_iv: int

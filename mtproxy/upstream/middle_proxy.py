@@ -6,9 +6,10 @@ import hashlib
 import logging
 import socket
 
-from mtproxy.downstream.types import HandshakeResult, MTProtoMessage, RPCProxyAnswer, RPCSimpleAck
+from mtproxy.downstream.types import HandshakeResult, MTProtoMessage, RPCProxyAnswer, RPCSimpleAck, RPCGoodbye
 from mtproxy.mtproto.constants import RpcFlags
 from mtproxy.utils import crypto
+from mtproxy.utils.streams import AioByteReader
 
 CBC_PADDING = 16
 PADDING_FILLER = b'\x04\x00\x00\x00'
@@ -21,16 +22,16 @@ LOGGER = logging.getLogger('mtproxy.middle_proxy')
 
 class MiddleProxyReader:
     def __init__(self, read_stream, seq_no=0):
-        self.read_stream = read_stream
+        self.read_stream = AioByteReader(read_stream)
         self.seq_no = seq_no
 
     async def read_raw_frame(self):
-        msg_len_bytes = await self.read_stream.readexactly(4)
+        msg_len_bytes = await self.read_stream.read_bytes(4)
         msg_len = int.from_bytes(msg_len_bytes, 'little')
 
         # skip padding
         while msg_len == 4:
-            msg_len_bytes = await self.read_stream.readexactly(4)
+            msg_len_bytes = await self.read_stream.read_bytes(4)
             msg_len = int.from_bytes(msg_len_bytes, 'little')
 
         len_is_bad = (msg_len % len(PADDING_FILLER) != 0)
@@ -38,7 +39,7 @@ class MiddleProxyReader:
             LOGGER.warning('msg_len is bad, closing connection', msg_len)
             return b''
 
-        msg_seq_bytes = await self.read_stream.readexactly(4)
+        msg_seq_bytes = await self.read_stream.read_bytes(4)
         msg_seq = int.from_bytes(msg_seq_bytes, 'little', signed=True)
         if msg_seq != self.seq_no:
             LOGGER.warning('unexpected seq_no')
@@ -46,8 +47,8 @@ class MiddleProxyReader:
 
         self.seq_no += 1
 
-        data = await self.read_stream.readexactly(msg_len - 4 - 4 - 4)
-        checksum_bytes = await self.read_stream.readexactly(4)
+        data = await self.read_stream.read_bytes(msg_len - 4 - 4 - 4)
+        checksum_bytes = await self.read_stream.read_bytes(4)
         checksum = int.from_bytes(checksum_bytes, 'little')
 
         computed_checksum = binascii.crc32(msg_len_bytes + msg_seq_bytes + data)
@@ -68,7 +69,7 @@ class MiddleProxyReader:
         msg_type = data[:4]
 
         if msg_type == RPC_CLOSE_EXT:
-            return None
+            return RPCGoodbye()
 
         if msg_type == RPC_PROXY_ANS:
             flags, conn_id, data = data[4:8], data[8:16], data[16:]

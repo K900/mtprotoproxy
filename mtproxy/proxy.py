@@ -6,8 +6,10 @@ from enum import Enum
 from typing import *
 
 from mtproxy.downstream import handshake
+from mtproxy.downstream.types import RPCGoodbye
 from mtproxy.tasks import config_updater, ip_getter, stat_tracker
 from mtproxy.upstream import direct, middle_proxy
+from mtproxy.utils.streams import AbstractByteReader, AioByteReader
 
 LOGGER = logging.getLogger('mtproxy.proxy')
 
@@ -184,23 +186,24 @@ class MTProxy:
         use_fast_mode = (self.mode == MTProxy.Mode.DIRECT_FAST)
 
         result = await handshake.handle_handshake(
-            reader=client_read,
+            reader=AioByteReader(client_read),
             writer=client_write,
             secrets=self.secrets,
             fast=use_fast_mode
         )
+
+        client_read = result.read_stream
+        client_write = result.write_stream
 
         if self.mode in (
                 MTProxy.Mode.DIRECT_FAST,
                 MTProxy.Mode.DIRECT_SAFE
         ):
             tg_read, tg_write = await direct.connect(result, fast=use_fast_mode)
-            client_read = result.read_stream
-            client_write = result.write_stream
 
-            async def pump(reader, writer):
+            async def pump(reader: AbstractByteReader, writer: asyncio.StreamWriter):
                 while True:
-                    data = await reader.read(self.buffer_read)
+                    data = await reader.read_bytes(self.buffer_read)
                     if not data:
                         break
 
@@ -218,7 +221,7 @@ class MTProxy:
 
             async def pump_middle_proxy_up():
                 while True:
-                    message = await result.client_info.transport.read_message(result.read_stream)
+                    message = await result.client_info.transport.read_message(client_read)
                     LOGGER.debug(f'Got client request {message}')
 
                     if not message:
@@ -233,13 +236,14 @@ class MTProxy:
                     response = await proxy_reader.read_proxy_response()
                     LOGGER.debug(f'Got proxy response {response}')
 
-                    if not response:
+                    if isinstance(response, RPCGoodbye):
+                        LOGGER.debug(f'Server asked us to close connection')
                         break
 
-                    result.client_info.transport.write_response(result.write_stream, response)
-                    await result.write_stream.drain()
+                    result.client_info.transport.write_response(client_write, response)
+                    await client_write.drain()
 
-                close_write_stream(result.write_stream)
+                close_write_stream(client_write)
 
             self.start_worker(pump_middle_proxy_up())
             self.start_worker(pump_middle_proxy_down())

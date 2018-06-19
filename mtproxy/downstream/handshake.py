@@ -5,20 +5,21 @@ import logging
 from typing import Dict
 
 from mtproxy.downstream import transports
-from mtproxy.downstream.types import ClientInfo, HandshakeResult, HandshakeError
+from mtproxy.downstream.types import ClientInfo, HandshakeError, HandshakeResult
 from mtproxy.mtproto.constants import DC_ID_POS, HANDSHAKE_LEN, PROTO_TAG_POS
 from mtproxy.utils import crypto
+from mtproxy.utils.streams import AbstractByteReader
 
 LOGGER = logging.getLogger('mtproxy.handshake')
 
 
 async def handle_handshake(
-        reader: asyncio.StreamReader,
+        reader: AbstractByteReader,
         writer: asyncio.StreamWriter,
         secrets: Dict[str, bytes],
         fast: bool = False
 ) -> HandshakeResult:
-    handshake = await reader.readexactly(HANDSHAKE_LEN)
+    handshake = await reader.read_bytes(HANDSHAKE_LEN)
     peer = writer.get_extra_info('peername')
 
     for username, secret in secrets.items():

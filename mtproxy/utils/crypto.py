@@ -7,7 +7,7 @@ from Crypto.Util import Counter
 from typing import Tuple
 
 from mtproxy.mtproto.constants import HANDSHAKE_HEADER_LEN, IV_LEN, KEY_LEN
-from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
+from mtproxy.utils.streams import AbstractByteReader
 
 LOGGER = logging.getLogger('mtproxy.crypto')
 
@@ -36,38 +36,25 @@ def random_bytes(n: int) -> bytearray:
     return bytearray([random.randrange(0, 256) for _ in range(n)])
 
 
-class AESReader(LayeredStreamReaderBase):
+class AESReader(AbstractByteReader):
     def __init__(
             self,
-            upstream: asyncio.StreamReader,
+            upstream: AbstractByteReader,
             aes: AES,
             block_size: int = 1
     ):
-        super().__init__(upstream)
+        self.upstream = upstream
         self.block_size = block_size
         self.buf = bytearray()
         self.aes = aes
-        self.passthrough = False
 
-    async def read(self, n: int = -1) -> bytes:
-        if self.buf:
-            ret = bytes(self.buf)
-            self.buf.clear()
-            return ret
-        else:
-            data = await self.upstream.read(n)
-            needed_till_full_block = -len(data) % self.block_size
-            if needed_till_full_block > 0:
-                data += self.upstream.readexactly(needed_till_full_block)
-            return self.aes.decrypt(data)
-
-    async def readexactly(self, n: int) -> bytes:
+    async def read_bytes(self, n: int) -> bytes:
         if n > len(self.buf):
             to_read = n - len(self.buf)
             needed_till_full_block = -to_read % self.block_size
 
             to_read_block_aligned = to_read + needed_till_full_block
-            data = await self.upstream.readexactly(to_read_block_aligned)
+            data = await self.upstream.read_bytes(to_read_block_aligned)
             self.buf += self.aes.decrypt(data)
 
         ret = bytes(self.buf[:n])
@@ -75,25 +62,24 @@ class AESReader(LayeredStreamReaderBase):
         return ret
 
 
-class AESWriter(LayeredStreamWriterBase):
+class AESWriter:
     def __init__(
             self,
             upstream: asyncio.StreamWriter,
             aes: AES,
             block_size: int = 1
     ):
-        super().__init__(upstream)
+        self.upstream = upstream
         self.aes = aes
         self.block_size = block_size
-        self.passthrough = False
 
     def write(self, data: bytes) -> int:
         if len(data) % self.block_size != 0:
             LOGGER.error(f'attempted to write {len(data)} bytes - not aligned to block size {self.block_size}')
             return 0
 
-        if self.passthrough:
-            return self.upstream.write(data)
-        else:
-            encrypted = self.aes.encrypt(data)
-            return self.upstream.write(encrypted)
+        encrypted = self.aes.encrypt(data)
+        return self.upstream.write(encrypted)
+
+    def drain(self):
+        return self.upstream.drain()
