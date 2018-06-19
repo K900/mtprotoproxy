@@ -1,11 +1,8 @@
 import asyncio
 import logging
-from typing import *
 
-from mtproxy.downstream.types import AbstractTransport, ClientInfo
+from mtproxy.downstream.types import AbstractTransport, MTProtoMessage, RPCProxyAnswer, RPCSimpleAck
 from mtproxy.mtproto.constants import RpcFlags
-from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
-
 
 LOGGER = logging.getLogger('mtproxy.transports')
 
@@ -18,7 +15,7 @@ class AbridgedTransport(AbstractTransport):
     LONG_PACKET_MAX_SIZE = 2 ** 24
 
     @staticmethod
-    async def read_message(stream: asyncio.StreamReader) -> Tuple[bytes, bool]:
+    async def read_message(stream: asyncio.StreamReader) -> MTProtoMessage:
         msg_len_bytes = await stream.readexactly(1)
         msg_len = int.from_bytes(msg_len_bytes, "little")
 
@@ -35,26 +32,26 @@ class AbridgedTransport(AbstractTransport):
         msg_len *= 4
 
         msg = await stream.readexactly(msg_len)
-        return msg, quick_ack_expected
+        return MTProtoMessage(msg, quick_ack_expected)
 
     @staticmethod
-    def write_message(stream: asyncio.StreamWriter, msg: bytes, simple_ack: bool) -> int:
-        if len(msg) % 4 != 0:
-            LOGGER.warning(f'MTProto abridged message length not aligned on 4: {len(msg)}')
-            return 0
+    def write_simple_ack(stream: asyncio.StreamWriter, resp: RPCSimpleAck):
+        return stream.write(b'\xdd' + resp.data[::1])
 
-        if simple_ack:
-            return stream.write(b'\xdd' + msg[::1])
+    @staticmethod
+    def write_proxy_answer(stream: asyncio.StreamWriter, resp: RPCProxyAnswer):
+        data = resp.data
+        if len(data) % 4 != 0:
+            LOGGER.warning(f'MTProto abridged message length not aligned on 4: {len(data)}')
 
-        len_div_four = len(msg) // 4
+        len_div_four = len(data) // 4
 
         if len_div_four < AbridgedTransport.SHORT_PACKET_MAX_SIZE:
-            return stream.write(bytes([len_div_four]) + msg)
+            stream.write(bytes([len_div_four]) + data)
         elif len_div_four < AbridgedTransport.LONG_PACKET_MAX_SIZE:
-            return stream.write(b'\x7f' + int.to_bytes(len_div_four, 3, 'little') + msg)
+            stream.write(b'\x7f' + int.to_bytes(len_div_four, 3, 'little') + data)
         else:
-            LOGGER.warning(f'MTProto abridged message too long: {len(msg)}')
-            return 0
+            LOGGER.warning(f'MTProto abridged message too long: {len(data)}')
 
 
 class IntermediateTransport(AbstractTransport):
@@ -62,7 +59,7 @@ class IntermediateTransport(AbstractTransport):
     HANDSHAKE_FLAGS = RpcFlags.EXTMODE2 | RpcFlags.PROTOCOL_INTERMEDIATE
 
     @staticmethod
-    async def read_message(stream: asyncio.StreamReader) -> Tuple[bytes, bool]:
+    async def read_message(stream: asyncio.StreamReader) -> MTProtoMessage:
         msg_len_bytes = await stream.readexactly(4)
         msg_len = int.from_bytes(msg_len_bytes, "little")
 
@@ -73,13 +70,16 @@ class IntermediateTransport(AbstractTransport):
             quick_ack_expected = False
 
         msg = await stream.readexactly(msg_len)
-        return msg, quick_ack_expected
+        return MTProtoMessage(msg, quick_ack_expected)
 
     @staticmethod
-    def write_message(stream: asyncio.StreamWriter, msg: bytes, simple_ack: bool) -> int:
-        if simple_ack:
-            return stream.write(b'\xdd' + msg)
-        return stream.write(int.to_bytes(len(msg), 4, 'little') + msg)
+    def write_simple_ack(stream: asyncio.StreamWriter, resp: RPCSimpleAck):
+        return stream.write(b'\xdd' + resp.data)
+
+    @staticmethod
+    def write_proxy_answer(stream: asyncio.StreamWriter, resp: RPCProxyAnswer):
+        data = resp.data
+        return stream.write(int.to_bytes(len(data), 4, 'little') + data)
 
 
 KNOWN_TRANSPORTS = [AbridgedTransport, IntermediateTransport]
@@ -89,23 +89,3 @@ def get_transport_by_tag(tag: bytes):
     for transport_cls in KNOWN_TRANSPORTS:
         if transport_cls.PROTO_TAG == tag:
             return transport_cls
-
-
-class MtProtoReader(LayeredStreamReaderBase):
-    def __init__(self, upstream: LayeredStreamReaderBase, client_info: ClientInfo):
-        super().__init__(upstream)
-        self.client_info = client_info
-
-    async def read(self, n=-1):
-        message, quick_ack_expected = await self.client_info.transport.read_message(self.upstream)
-        self.client_info.quick_ack_expected = quick_ack_expected
-        return message
-
-
-class MtProtoWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream: LayeredStreamWriterBase, client_info: ClientInfo):
-        super().__init__(upstream)
-        self.client_info = client_info
-
-    def write(self, msg: bytes) -> int:
-        return self.client_info.transport.write_message(self.upstream, msg, self.client_info.simple_ack_expected)

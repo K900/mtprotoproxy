@@ -6,10 +6,9 @@ import hashlib
 import logging
 import socket
 
-from mtproxy.downstream.handshake import HandshakeResult
+from mtproxy.downstream.types import HandshakeResult, MTProtoMessage, RPCProxyAnswer, RPCSimpleAck
 from mtproxy.mtproto.constants import RpcFlags
 from mtproxy.utils import crypto
-from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 CBC_PADDING = 16
 PADDING_FILLER = b'\x04\x00\x00\x00'
@@ -20,18 +19,18 @@ MAX_MSG_LEN = 2 ** 24
 LOGGER = logging.getLogger('mtproxy.middle_proxy')
 
 
-class MTProtoFrameStreamReader(LayeredStreamReaderBase):
-    def __init__(self, upstream, seq_no=0):
-        super().__init__(upstream)
+class MiddleProxyReader:
+    def __init__(self, read_stream, seq_no=0):
+        self.read_stream = read_stream
         self.seq_no = seq_no
 
-    async def read(self, buf_size=-1):
-        msg_len_bytes = await self.upstream.readexactly(4)
+    async def read_raw_frame(self):
+        msg_len_bytes = await self.read_stream.readexactly(4)
         msg_len = int.from_bytes(msg_len_bytes, 'little')
 
         # skip padding
         while msg_len == 4:
-            msg_len_bytes = await self.upstream.readexactly(4)
+            msg_len_bytes = await self.read_stream.readexactly(4)
             msg_len = int.from_bytes(msg_len_bytes, 'little')
 
         len_is_bad = (msg_len % len(PADDING_FILLER) != 0)
@@ -39,7 +38,7 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
             LOGGER.warning('msg_len is bad, closing connection', msg_len)
             return b''
 
-        msg_seq_bytes = await self.upstream.readexactly(4)
+        msg_seq_bytes = await self.read_stream.readexactly(4)
         msg_seq = int.from_bytes(msg_seq_bytes, 'little', signed=True)
         if msg_seq != self.seq_no:
             LOGGER.warning('unexpected seq_no')
@@ -47,8 +46,8 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
 
         self.seq_no += 1
 
-        data = await self.upstream.readexactly(msg_len - 4 - 4 - 4)
-        checksum_bytes = await self.upstream.readexactly(4)
+        data = await self.read_stream.readexactly(msg_len - 4 - 4 - 4)
+        checksum_bytes = await self.read_stream.readexactly(4)
         checksum = int.from_bytes(checksum_bytes, 'little')
 
         computed_checksum = binascii.crc32(msg_len_bytes + msg_seq_bytes + data)
@@ -56,67 +55,38 @@ class MTProtoFrameStreamReader(LayeredStreamReaderBase):
             return b''
         return data
 
-
-class MTProtoFrameStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream, seq_no=0):
-        super().__init__(upstream)
-        self.seq_no = seq_no
-
-    def write(self, msg):
-        len_bytes = int.to_bytes(len(msg) + 4 + 4 + 4, 4, 'little')
-        seq_bytes = int.to_bytes(self.seq_no, 4, 'little', signed=True)
-        self.seq_no += 1
-
-        msg_without_checksum = len_bytes + seq_bytes + msg
-        checksum = int.to_bytes(binascii.crc32(msg_without_checksum), 4, 'little')
-
-        full_msg = msg_without_checksum + checksum
-        padding = PADDING_FILLER * ((-len(full_msg) % CBC_PADDING) // len(PADDING_FILLER))
-
-        return self.upstream.write(full_msg + padding)
-
-
-class ProxyReqStreamReader(LayeredStreamReaderBase):
-    def __init__(self, upstream, client_info):
-        super().__init__(upstream)
-        self.client_info = client_info
-
-    async def read(self, n=-1):
+    async def read_proxy_response(self):
         RPC_PROXY_ANS = b'\x0d\xda\x03\x44'
         RPC_CLOSE_EXT = b'\xa2\x34\xb6\x5e'
         RPC_SIMPLE_ACK = b'\x9b\x40\xac\x3b'
 
-        data = await self.upstream.read(1)
+        data = await self.read_raw_frame()
 
         if len(data) < 4:
-            return b''
+            logging.warning(f'MTProto RPC proxy response is too short: {binascii.hexlify(data)}')
 
         msg_type = data[:4]
 
         if msg_type == RPC_CLOSE_EXT:
-            return b''
+            return None
 
         if msg_type == RPC_PROXY_ANS:
             flags, conn_id, data = data[4:8], data[8:16], data[16:]
-            return data
+            return RPCProxyAnswer(flags, data)
 
         if msg_type == RPC_SIMPLE_ACK:
             conn_id, ack = data[4:12], data[12:]
-            self.client_info.simple_ack_expected = True
-            return ack
+            return RPCSimpleAck(ack)
 
         LOGGER.warning(f'Unsupported message type: {binascii.hexlify(msg_type)}')
-        return b''
+        return None
 
 
-def align(b, s):
-    missing = s - (len(b) % s)
-    return b + b'\x00' * missing
+class MiddleProxyWriter:
+    def __init__(self, write_stream, client_info, proxy_tag, my_ip, my_port, seq_no=0):
+        self.write_stream = write_stream
+        self.seq_no = seq_no
 
-
-class ProxyReqStreamWriter(LayeredStreamWriterBase):
-    def __init__(self, upstream, client_info, proxy_tag, my_ip, my_port):
-        super().__init__(upstream)
         self.client_info = client_info
         self.proxy_tag = proxy_tag
 
@@ -124,6 +94,19 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         self.our_ip_port = self._encode_ip_port(my_ip, my_port)
 
         self.out_conn_id = crypto.random_bytes(8)
+
+    def write_raw_frame(self, data):
+        len_bytes = int.to_bytes(len(data) + 4 + 4 + 4, 4, 'little')
+        seq_bytes = int.to_bytes(self.seq_no, 4, 'little', signed=True)
+        self.seq_no += 1
+
+        msg_without_checksum = len_bytes + seq_bytes + data
+        checksum = int.to_bytes(binascii.crc32(msg_without_checksum), 4, 'little')
+
+        full_msg = msg_without_checksum + checksum
+        padding = PADDING_FILLER * ((-len(full_msg) % CBC_PADDING) // len(PADDING_FILLER))
+
+        return self.write_stream.write(full_msg + padding)
 
     @staticmethod
     def _encode_ip_port(address, port):
@@ -135,12 +118,14 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         result += int.to_bytes(port, 4, 'little')
         return result
 
-    def write(self, msg):
+    def write_proxy_request(self, msg: MTProtoMessage):
         RPC_PROXY_REQ = b'\xee\xf1\xce\x36'
         PROXY_TAG = b'\xae\x26\x1e\xdb'
 
-        if len(msg) % 4 != 0:
-            LOGGER.warning('BUG: attempted to send msg with len %d' % len(msg))
+        data = msg.data
+
+        if len(data) % 4 != 0:
+            LOGGER.warning('BUG: attempted to send msg with len %d' % len(data))
             return 0
 
         flags = self.client_info.transport.HANDSHAKE_FLAGS | RpcFlags.MAGIC
@@ -148,10 +133,10 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         if self.proxy_tag:
             flags |= RpcFlags.HAS_AD_TAG
 
-        if self.client_info.quick_ack_expected:
+        if msg.quick_ack:
             flags |= RpcFlags.QUICKACK
 
-        if msg[:7] == b'\x00' * 7:
+        if data[:7] == b'\x00' * 7:
             flags |= RpcFlags.NOT_ENCRYPTED
 
         flags = flags.value.to_bytes(4, 'little')
@@ -160,14 +145,18 @@ class ProxyReqStreamWriter(LayeredStreamWriterBase):
         full_msg += RPC_PROXY_REQ + flags + self.out_conn_id
         full_msg += self.remote_ip_port + self.our_ip_port
 
+        def align(b, s):
+            missing = s - (len(b) % s)
+            return b + b'\x00' * missing
+
         if self.proxy_tag:
             proxy_tag_bytes = PROXY_TAG + len(self.proxy_tag).to_bytes(1, 'big') + self.proxy_tag
             proxy_tag_bytes_aligned = align(proxy_tag_bytes, 4)
             full_msg += len(proxy_tag_bytes_aligned).to_bytes(4, 'little') + proxy_tag_bytes_aligned
 
-        full_msg += msg
+        full_msg += data
 
-        return self.upstream.write(full_msg)
+        return self.write_raw_frame(full_msg)
 
 
 def get_middleproxy_aes_key_and_iv(nonce_srv, nonce_clt, clt_ts, srv_ip, clt_port, purpose,
@@ -218,8 +207,8 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
         addr, port = proxy.config_updater.pick_proxy_v4(client_handshake_result.dc_id)
 
     try:
-        reader_tgt, writer_tgt = await asyncio.open_connection(addr, port, limit=proxy.buffer_read)
-        proxy.setup_socket(writer_tgt.get_extra_info('socket'))
+        read_stream, write_stream = await asyncio.open_connection(addr, port, limit=proxy.buffer_read)
+        proxy.setup_socket(write_stream.get_extra_info('socket'))
     except ConnectionRefusedError:
         LOGGER.exception(f'Got connection refused while trying to connect to {addr}:{port}')
         return False
@@ -227,7 +216,17 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
         LOGGER.exception(f'Unable to connect to {addr}:{port}')
         return False
 
-    writer_tgt = MTProtoFrameStreamWriter(writer_tgt, START_SEQ_NO)
+    tg_ip, tg_port = write_stream.get_extra_info('peername')[:2]
+    my_ip, my_port = write_stream.get_extra_info('sockname')[:2]
+
+    writer = MiddleProxyWriter(
+        write_stream=write_stream,
+        client_info=client_handshake_result.client_info,
+        proxy_tag=proxy.proxy_tag,
+        my_ip=my_ip,
+        my_port=my_port,
+        seq_no=START_SEQ_NO
+    )
 
     key_selector = proxy.config_updater.proxy_secret[:4]
     crypto_ts = int.to_bytes(int(time.time()) % (256 ** 4), 4, 'little')
@@ -236,11 +235,11 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
 
     msg = RPC_NONCE + key_selector + CRYPTO_AES + crypto_ts + nonce
 
-    writer_tgt.write(msg)
-    await writer_tgt.drain()
+    writer.write_raw_frame(msg)
+    await writer.write_stream.drain()
 
-    reader_tgt = MTProtoFrameStreamReader(reader_tgt, START_SEQ_NO)
-    ans = await reader_tgt.read(proxy.buffer_read)
+    reader = MiddleProxyReader(read_stream, START_SEQ_NO)
+    ans = await reader.read_raw_frame()
 
     if len(ans) != RPC_NONCE_ANS_LEN:
         return False
@@ -253,9 +252,6 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
         return False
 
     # get keys
-    tg_ip, tg_port = writer_tgt.upstream.get_extra_info('peername')[:2]
-    my_ip, my_port = writer_tgt.upstream.get_extra_info('sockname')[:2]
-
     my_ipv4, my_ipv6 = proxy.ip_info
     if not use_ipv6_tg:
         if my_ipv4:
@@ -299,13 +295,13 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
     # TODO: pass client ip and port here for statistics
     handshake = RPC_HANDSHAKE + RPC_FLAGS + SENDER_PID + PEER_PID
 
-    writer_tgt.upstream = crypto.AESWriter(writer_tgt.upstream, aes=aes_enc, block_size=16)
-    writer_tgt.write(handshake)
-    await writer_tgt.drain()
+    writer.write_stream = crypto.AESWriter(writer.write_stream, aes=aes_enc, block_size=16)
+    writer.write_raw_frame(handshake)
+    await writer.write_stream.drain()
 
-    reader_tgt.upstream = crypto.AESReader(reader_tgt.upstream, aes=aes_dec, block_size=16)
+    reader.read_stream = crypto.AESReader(reader.read_stream, aes=aes_dec, block_size=16)
 
-    handshake_ans = await reader_tgt.read(1)
+    handshake_ans = await reader.read_raw_frame()
     if len(handshake_ans) != RPC_HANDSHAKE_ANS_LEN:
         return False
 
@@ -314,7 +310,4 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
     if handshake_type != RPC_HANDSHAKE or handshake_peer_pid != SENDER_PID:
         return False
 
-    writer_tgt = ProxyReqStreamWriter(writer_tgt, client_handshake_result.client_info, proxy.proxy_tag, my_ip, my_port)
-    reader_tgt = ProxyReqStreamReader(reader_tgt, client_handshake_result.client_info)
-
-    return reader_tgt, writer_tgt
+    return reader, writer

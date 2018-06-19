@@ -1,14 +1,34 @@
 import asyncio
 import dataclasses
 from abc import ABC, abstractmethod
-from typing import *
+from typing import Union
 
 from mtproxy.mtproto.constants import RpcFlags
 from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
 
 
+@dataclasses.dataclass
+class RPCProxyAnswer:
+    flags: int
+    data: bytes
+
+
+@dataclasses.dataclass
+class RPCSimpleAck:
+    data: bytes
+
+
+TRPCProxyResponse = Union[RPCProxyAnswer, RPCSimpleAck]
+
+
 class HandshakeError(OSError):
     pass
+
+
+@dataclasses.dataclass
+class MTProtoMessage:
+    data: bytes
+    quick_ack: bool
 
 
 class AbstractTransport(ABC):
@@ -17,12 +37,26 @@ class AbstractTransport(ABC):
 
     @staticmethod
     @abstractmethod
-    async def read_message(stream: asyncio.StreamReader) -> Tuple[bytes, bool]:
+    async def read_message(stream: asyncio.StreamReader) -> MTProtoMessage:
+        raise NotImplementedError
+
+    @classmethod
+    def write_response(cls, stream: asyncio.StreamWriter, resp: TRPCProxyResponse):
+        if isinstance(resp, RPCSimpleAck):
+            return cls.write_simple_ack(stream, resp)
+        elif isinstance(resp, RPCProxyAnswer):
+            return cls.write_proxy_answer(stream, resp)
+        else:
+            raise TypeError(f'Unsupported proxy response type {type(resp)}!')
+
+    @staticmethod
+    @abstractmethod
+    def write_simple_ack(stream: asyncio.StreamWriter, resp: RPCSimpleAck):
         raise NotImplementedError
 
     @staticmethod
     @abstractmethod
-    def write_message(stream: asyncio.StreamWriter, msg: bytes, simple_ack: bool) -> int:
+    def write_proxy_answer(stream: asyncio.StreamWriter, resp: RPCProxyAnswer):
         raise NotImplementedError
 
 

@@ -6,11 +6,8 @@ from enum import Enum
 from typing import *
 
 from mtproxy.downstream import handshake
-from mtproxy.downstream.handshake import ClientInfo
-from mtproxy.downstream.transports import MtProtoReader, MtProtoWriter
-from mtproxy.upstream import direct, middle_proxy
 from mtproxy.tasks import config_updater, ip_getter, stat_tracker
-from mtproxy.utils.streams import LayeredStreamReaderBase, LayeredStreamWriterBase
+from mtproxy.upstream import direct, middle_proxy
 
 LOGGER = logging.getLogger('mtproxy.upstream')
 
@@ -169,29 +166,10 @@ class MTProxy:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.buffer_read)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, self.buffer_write)
 
-    async def pump(
-            self,
-            reader: LayeredStreamReaderBase,
-            writer: LayeredStreamWriterBase,
-            client_info: ClientInfo
-    ):
-        self.stat_tracker.track_pump_start(client_info)
-
-        while True:
-            data = await reader.read(self.buffer_read)
-            if not data:
-                writer.write_eof()
-                await writer.drain()
-                writer.close()
-                break
-            else:
-                self.stat_tracker.track_data_transferred(client_info, len(data))
-                writer.write(data)
-                await writer.drain()
-
-        writer.transport.abort()
-
-        self.stat_tracker.track_pump_end(client_info)
+    def start_worker(self, coro):
+        task = asyncio.Task(coro)
+        self.pump_tasks.add(task)
+        asyncio.ensure_future(task, loop=self.loop)
 
     async def handle_client(self, client_read, client_write):
         self.setup_socket(client_write.get_extra_info("socket"))
@@ -212,20 +190,59 @@ class MTProxy:
             tg_read, tg_write = await direct.connect(result, fast=use_fast_mode)
             client_read = result.read_stream
             client_write = result.write_stream
+
+            async def pump(reader, writer):
+                while True:
+                    data = await reader.read(self.buffer_read)
+                    if not data:
+                        writer.write_eof()
+                        await writer.drain()
+                        writer.close()
+                        break
+
+                    writer.write(data)
+                    await writer.drain()
+
+                writer.transport.abort()
+
+            self.start_worker(pump(client_read, tg_write))
+            self.start_worker(pump(tg_read, client_write))
         elif self.mode == MTProxy.Mode.MIDDLE_PROXY:
-            tg_read, tg_write = await middle_proxy.connect(self, result)
-            client_read = MtProtoReader(result.read_stream, result.client_info)
-            client_write = MtProtoWriter(result.write_stream, result.client_info)
+            proxy_reader, proxy_writer = await middle_proxy.connect(self, result)
+
+            logging.debug('middle proxy handshake ok')
+
+            async def pump_middle_proxy_up():
+                while True:
+                    message = await result.client_info.transport.read_message(result.read_stream)
+                    logging.debug(f'got client request {message}')
+
+                    if not message:
+                        proxy_writer.write_stream.write_eof()
+                        await proxy_writer.write_stream.drain()
+                        proxy_writer.write_stream.close()
+                        break
+
+                    proxy_writer.write_proxy_request(message)
+                    await proxy_writer.write_stream.drain()
+
+            async def pump_middle_proxy_down():
+                while True:
+                    response = await proxy_reader.read_proxy_response()
+                    logging.debug(f'got proxy response {response}')
+
+                    if not response:
+                        result.write_stream.write_eof()
+                        await result.write_stream.drain()
+                        result.write_stream.close()
+                        break
+
+                    result.client_info.transport.write_response(result.write_stream, response)
+                    await result.write_stream.drain()
+
+            self.start_worker(pump_middle_proxy_up())
+            self.start_worker(pump_middle_proxy_down())
         else:
             raise ValueError(f'Unknown mode: {self.mode}')
 
         self.stat_tracker.track_connected(result.client_info)
-
-        pump_in = asyncio.Task(self.pump(client_read, tg_write, result.client_info))
-        pump_out = asyncio.Task(self.pump(tg_read, client_write, result.client_info))
-
-        self.pump_tasks.add(pump_in)
-        self.pump_tasks.add(pump_out)
-
-        asyncio.ensure_future(pump_in, loop=self.loop)
-        asyncio.ensure_future(pump_out, loop=self.loop)
