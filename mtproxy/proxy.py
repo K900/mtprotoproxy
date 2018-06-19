@@ -9,7 +9,14 @@ from mtproxy.downstream import handshake
 from mtproxy.tasks import config_updater, ip_getter, stat_tracker
 from mtproxy.upstream import direct, middle_proxy
 
-LOGGER = logging.getLogger('mtproxy.upstream')
+LOGGER = logging.getLogger('mtproxy.proxy')
+
+
+async def close_write_stream(stream: asyncio.StreamWriter):
+    stream.write_eof()
+    await stream.drain()
+    stream.close()
+    stream.transport.abort()
 
 
 class MTProxy:
@@ -195,15 +202,12 @@ class MTProxy:
                 while True:
                     data = await reader.read(self.buffer_read)
                     if not data:
-                        writer.write_eof()
-                        await writer.drain()
-                        writer.close()
                         break
 
                     writer.write(data)
                     await writer.drain()
 
-                writer.transport.abort()
+                close_write_stream(writer)
 
             self.start_worker(pump(client_read, tg_write))
             self.start_worker(pump(tg_read, client_write))
@@ -215,30 +219,27 @@ class MTProxy:
             async def pump_middle_proxy_up():
                 while True:
                     message = await result.client_info.transport.read_message(result.read_stream)
-                    logging.debug(f'got client request {message}')
+                    LOGGER.debug(f'Got client request {message}')
 
                     if not message:
-                        proxy_writer.write_stream.write_eof()
-                        await proxy_writer.write_stream.drain()
-                        proxy_writer.write_stream.close()
                         break
 
-                    proxy_writer.write_proxy_request(message)
-                    await proxy_writer.write_stream.drain()
+                    await proxy_writer.send_proxy_request(message)
+
+                close_write_stream(proxy_writer.write_stream)
 
             async def pump_middle_proxy_down():
                 while True:
                     response = await proxy_reader.read_proxy_response()
-                    logging.debug(f'got proxy response {response}')
+                    LOGGER.debug(f'Got proxy response {response}')
 
                     if not response:
-                        result.write_stream.write_eof()
-                        await result.write_stream.drain()
-                        result.write_stream.close()
                         break
 
                     result.client_info.transport.write_response(result.write_stream, response)
                     await result.write_stream.drain()
+
+                close_write_stream(result.write_stream)
 
             self.start_worker(pump_middle_proxy_up())
             self.start_worker(pump_middle_proxy_down())

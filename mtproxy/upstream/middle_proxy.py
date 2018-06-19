@@ -95,7 +95,7 @@ class MiddleProxyWriter:
 
         self.out_conn_id = crypto.random_bytes(8)
 
-    def write_raw_frame(self, data):
+    async def send_raw_frame(self, data):
         len_bytes = int.to_bytes(len(data) + 4 + 4 + 4, 4, 'little')
         seq_bytes = int.to_bytes(self.seq_no, 4, 'little', signed=True)
         self.seq_no += 1
@@ -106,7 +106,8 @@ class MiddleProxyWriter:
         full_msg = msg_without_checksum + checksum
         padding = PADDING_FILLER * ((-len(full_msg) % CBC_PADDING) // len(PADDING_FILLER))
 
-        return self.write_stream.write(full_msg + padding)
+        self.write_stream.write(full_msg + padding)
+        await self.write_stream.drain()
 
     @staticmethod
     def _encode_ip_port(address, port):
@@ -118,7 +119,7 @@ class MiddleProxyWriter:
         result += int.to_bytes(port, 4, 'little')
         return result
 
-    def write_proxy_request(self, msg: MTProtoMessage):
+    async def send_proxy_request(self, msg: MTProtoMessage):
         RPC_PROXY_REQ = b'\xee\xf1\xce\x36'
         PROXY_TAG = b'\xae\x26\x1e\xdb'
 
@@ -156,7 +157,7 @@ class MiddleProxyWriter:
 
         full_msg += data
 
-        return self.write_raw_frame(full_msg)
+        await self.send_raw_frame(full_msg)
 
 
 def get_middleproxy_aes_key_and_iv(nonce_srv, nonce_clt, clt_ts, srv_ip, clt_port, purpose,
@@ -219,6 +220,7 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
     tg_ip, tg_port = write_stream.get_extra_info('peername')[:2]
     my_ip, my_port = write_stream.get_extra_info('sockname')[:2]
 
+    reader = MiddleProxyReader(read_stream, START_SEQ_NO)
     writer = MiddleProxyWriter(
         write_stream=write_stream,
         client_info=client_handshake_result.client_info,
@@ -235,10 +237,7 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
 
     msg = RPC_NONCE + key_selector + CRYPTO_AES + crypto_ts + nonce
 
-    writer.write_raw_frame(msg)
-    await writer.write_stream.drain()
-
-    reader = MiddleProxyReader(read_stream, START_SEQ_NO)
+    await writer.send_raw_frame(msg)
     ans = await reader.read_raw_frame()
 
     if len(ans) != RPC_NONCE_ANS_LEN:
@@ -296,8 +295,7 @@ async def connect(proxy: 'MTProxy', client_handshake_result: HandshakeResult):
     handshake = RPC_HANDSHAKE + RPC_FLAGS + SENDER_PID + PEER_PID
 
     writer.write_stream = crypto.AESWriter(writer.write_stream, aes=aes_enc, block_size=16)
-    writer.write_raw_frame(handshake)
-    await writer.write_stream.drain()
+    await writer.send_raw_frame(handshake)
 
     reader.read_stream = crypto.AESReader(reader.read_stream, aes=aes_dec, block_size=16)
 
